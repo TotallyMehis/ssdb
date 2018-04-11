@@ -3,5 +3,5 @@ Creates a list of Source engine game servers and updates it regularly. Useful fo
 
 ## Instructions
 - Install discord.py `pip install -U discord.py` and python-valve `pip install python-valve`
-- Put the channel id in `channel.txt` and bot token in `token.txt`
+- Configure `serverlist_config.ini` with at least the bot token, channel id and the list method
 - Run serverlist_bot.py

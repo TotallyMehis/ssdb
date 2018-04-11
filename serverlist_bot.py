@@ -1,4 +1,6 @@
 import time
+import datetime
+import configparser
 
 import discord
 import asyncio
@@ -8,15 +10,13 @@ import valve.source.a2s
 import valve.source.master_server
 
 
-GAME_DIR = u"zombie_master_reborn" # The game directory to look for
-LIST_EMBED_MAX = 10 # Max amount of servers to print in the embed
-LIST_EMBED_TITLE = "ZM Reborn Servers"
-LIST_EMBED_COLOR = 0x681414
 
 QUERY_INTERVAL = 300 # Query servers every this many seconds
 # Allow queries every this many seconds (from user commands)
 # You shouldn't change this to be too low or the query will take too long and the bot will disconnect.
 MIN_QUERY_INTERVAL = 150
+
+DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
 
 
 class Bot:
@@ -30,6 +30,10 @@ class Bot:
         for task in self.tasks:
             task.create_task()
         self.client.run( token )
+        
+    def end( self ):
+        for task in self.tasks:
+            task.free_task()
         
     async def on_ready( self ):
         for task in self.tasks:
@@ -68,6 +72,9 @@ class BaseTask:
         
     def create_task( self ):
         pass
+    
+    def free_task( self ):
+        pass
         
     async def on_ready( self ):
         pass
@@ -78,15 +85,29 @@ class BaseTask:
     async def on_message_delete( self, message ):
         pass
     
-class ZMServerList(BaseTask):
-    """Task: Prints an embed list of ZM servers. Responds to commands (!serverlist/!servers) whenever possible."""
-    def __init__( self, channel_id ):
+class ServerListConfig:
+    def __init__( self, config ):
+        self.embed_title = config.get( 'config', 'embed_title' )
+        self.embed_max = int( config.get( 'config', 'embed_max' ) )
+        self.embed_max = 1 if self.embed_max < 1 else self.embed_max
+        self.embed_color = int( config.get( 'config', 'embed_color' ), 16 )
+        self.gamedir = config.get( 'config', 'gamedir' )
+        self.max_total_query_time = float( config.get( 'config', 'max_total_query_time' ) )
+        self.max_total_query_time = self.max_total_query_time if self.max_total_query_time > 0.0 else 30.0
+    
+class ServerList(BaseTask):
+    """Task: Prints an embed list of servers. Responds to commands (!serverlist/!servers) whenever possible."""
+    def __init__( self, config ):
         BaseTask.__init__( self )
-        self.channel_id = channel_id # The Channel ID we will use
+        self.channel_id = config.get( 'config', 'channel' ) # The Channel ID we will use
+        self.config = ServerListConfig( config )
+        self.user_serverlist = self.parse_ips( config.get( 'config', 'serverlist' ) )
+        self.user_blacklist = self.parse_ips( config.get( 'config', 'blacklist' ) )
         self.last_serverlist = []
-        self.last_action_time = 0.0
+        self.last_action_time = 0.0 # Last time we edited or printed a message
         self.last_print_time = 0.0
         self.last_query_time = 0.0
+        self.num_offline = 0 # Number of servers we couldn't contact
         self.cur_msg = None # The message we should edit
         self.num_other_msgs = 0 # How many messages between our msg and now
         
@@ -94,13 +115,16 @@ class ZMServerList(BaseTask):
         BOT.client.loop.create_task( self.update_loop() )
         
     async def on_ready( self ):
-        # Find the last time we said something
+        # Make sure our channel id is valid
         channel = BOT.client.get_channel( self.channel_id )
+        if not channel:
+            print( "Invalid channel id %s!" % self.channel_id )
+            channel = next( BOT.client.get_all_channels() )
+            self.channel_id = channel.id
+            print( "Using channel %s instead!" % channel.name )
         limit = 6
+        # Find the last time we said something
         async for msg in BOT.client.logs_from( channel, limit = limit ):
-            # We already got it
-            if self.last_action_time != 0:
-                break
             if msg.author.id == BOT.client.user.id:
                 self.cur_msg = msg
                 await self.print_list( await self.get_serverlist() )
@@ -112,12 +136,13 @@ class ZMServerList(BaseTask):
                 break
         
     async def on_message( self, message ):
+        # Listen for commands in our channel.
         if message.channel.id != self.channel_id:
             return
         if message.author.id == BOT.client.user.id:
             return
         self.num_other_msgs += 1
-        if message.content[0] != '!': # Is comment?
+        if message.content[0] != '!':
             return
         if not self.should_query() and not self.should_print_new_msg():
             return
@@ -127,48 +152,121 @@ class ZMServerList(BaseTask):
     async def on_message_delete( self, message ):
         if self.cur_msg.id == message.id:
             self.cur_msg = None # Our message, clear cache
-        if self.cur_msg is not None and message.channel.id == self.channel_id:
+        if self.cur_msg and message.channel.id == self.channel_id:
             self.num_other_msgs -= 1;
         
     async def update_loop( self ):
+        # Query servers on an interval
         await BOT.client.wait_until_ready()
         await asyncio.sleep( MIN_QUERY_INTERVAL ) # Wait a bit before starting
         while not BOT.client.is_closed:
             if self.should_query():
-                new_list = await self.query_serverlist()
+                new_list = await self.query_newlist()
                 if self.list_differs( new_list ):
                     print( "List differs! Updating..." )
                     await self.print_list( new_list )
             await asyncio.sleep( self.get_sleeptime() )
         
-    async def query_serverlist( self ):
-		# Doesn't utilize async :(
-        self.last_query_time = time.time()
+    async def query_newlist( self ):
+        # Return the server list depending on option
+        self.num_offline = 0
         serverlist = []
+        if self.user_serverlist:
+            # User wants a specific list from ips.
+            serverlist = await self.query_servers( self.user_serverlist )
+        else:
+            # Just query master server.
+            serverlist = await self.query_masterserver( None if not self.config.gamedir else self.config.gamedir )
+        self.last_query_time = time.time()
+        return serverlist
+    
+    async def query_masterserver( self, gamedir ):
+        # TODO: More options?
+        ret = []
         with valve.source.master_server.MasterServerQuerier() as msq:
             try:
-                for address in msq.find( gamedir = GAME_DIR ):
-                    with valve.source.a2s.ServerQuerier( address ) as server:
-                        # Copy the server info
-                        info = server.info()
-                        # Ignore bots if possible.
-                        new_count = info['player_count'] - info['bot_count']
-                        info['player_count'] = new_count if new_count >= 0 else info['player_count']
-                        info['address_real'] = address
-                        info['address'] = "%s:%i" % ( address[0], address[1] );
-                        serverlist.append( info )
+                query_start = time.time()
+                for address in msq.find( gamedir = gamedir ):
+                    if self.is_blacklisted( address ):
+                        continue
+                    info = await self.query_server_info( address )
+                    if info:
+                        ret.append( info )
+                    if (time.time() - query_start) > self.config.max_total_query_time:
+                        break
             except valve.source.NoResponseError:
-                print( "Master server request timed out!" )
-        return serverlist
-
+                print( self.get_datetime( time.time() ) + " | Master server request timed out!" )
+        return ret
+        
+    async def query_servers( self, list ):
+        ret = []
+        query_start = time.time()
+        for address in list:
+            info = await self.query_server_info( address )
+            if info:
+                ret.append( info )
+            if (time.time() - query_start) > self.config.max_total_query_time:
+                break
+        return ret
+    
+    async def query_server_info( self, address ):
+        try:
+            with valve.source.a2s.ServerQuerier( address ) as server:
+                if not server:
+                    return None
+                # Copy the server info
+                info = server.info()
+                # Ignore bots if possible.
+                new_count = info['player_count'] - info['bot_count']
+                info['player_count'] = new_count if new_count >= 0 else info['player_count']
+                info['address_real'] = address
+                info['address'] = "%s:%i" % ( address[0], address[1] );
+                return info
+        except:
+            print( self.get_datetime( time.time() ) + " | Couldn't contact server %s!" % self.address_to_str( address ) )
+            self.num_offline += 1
+            return None
+    
     async def get_serverlist( self ):
         if self.should_query():
-            return await self.query_serverlist()
+            return await self.query_newlist()
         return self.last_serverlist
+        
+    @staticmethod
+    def parse_ips( ip_list ):
+        list = []
+        for address in ip_list.split( ',', 2 ):
+            ip = address.split( ':' )
+            ip[0] = ip[0].strip()
+            if not ip[0]:
+                continue
+            print( "Parsed ip %s!" % ip[0] )
+            list.append( [ ip[0], 0 if len( ip ) <= 1 else int( ip[1] ) ] )
+        return list
+        
+    def is_blacklisted( self, address ):
+        for blacklisted in self.user_blacklist:
+            if self.address_equals( blacklisted, address ):
+                return True
+        return False
+    
+    @staticmethod
+    def address_to_str( address ):
+        return address[0] if address[1] == 0 else ("%s:%i" % (address[0], address[1]) )
+    
+    @staticmethod
+    def address_equals( a1, a2 ):
+        if a1[0] == a2[0]:
+            # If port is 0, ignore it
+            if a1[1] == 0 or a2[1] == 0:
+                return True
+            elif a1[1] == a2[1]:
+                return True
+        return False
         
     def list_differs( self, newList ):
         if not self.last_serverlist:
-            return False
+            return True
         if len( newList ) != len( self.last_serverlist ):
             return True
         for ( nServer, oServer ) in zip( newList, self.last_serverlist ):
@@ -192,6 +290,10 @@ class ZMServerList(BaseTask):
             return 0
         else:
             return QUERY_INTERVAL - time_delta
+    
+    @staticmethod
+    def get_datetime( timestamp ):
+        return datetime.datetime.fromtimestamp( timestamp ).strftime( DATE_FORMAT )
     
     async def print_list( self, list ):
         if self.should_print_new_msg():
@@ -217,10 +319,13 @@ class ZMServerList(BaseTask):
         # I just had a deja vu... ABOUT THIS EXACT CODE AND ME EXPLAINING IT IN THIS COMMENT
         # FREE WILL IS A LIE
         # WE LIVE IN A SIMULATION
+        description = "%i server(s) online" % len( list )
+        if self.num_offline > 0:
+            description += ", %i offline" % self.num_offline
         em = discord.Embed(
-            title = LIST_EMBED_TITLE,
-            description = "%i server(s) online" % len( list ),
-            colour = LIST_EMBED_COLOR )
+            title = self.config.embed_title,
+            description = description,
+            colour = self.config.embed_color )
         counter = 0
         for info in serverlist:
             em.add_field(
@@ -228,7 +333,7 @@ class ZMServerList(BaseTask):
                 value = "Map: {map} | Connect: steam://connect/{address}".format( **info ),
                 inline = False )
             counter += 1
-            if counter >= LIST_EMBED_MAX:
+            if counter >= self.config.embed_max:
                 break
         return em
     
@@ -236,16 +341,25 @@ class ZMServerList(BaseTask):
         self.num_other_msgs = 0
         self.last_print_time = self.last_action_time = time.time()
         self.cur_msg = await BOT.client.send_message( channel, embed = self.build_serverlist_embed( list ) )
-        print( "Printed new list." )
+        print( self.get_datetime( self.last_action_time ) + " | Printed new list." )
         
     async def send_editlist( self, list ):
         self.last_action_time = time.time()
         await BOT.client.edit_message( self.cur_msg, embed = self.build_serverlist_embed( list ) )
-        print( "Edited existing list." )
+        print( self.get_datetime( self.last_action_time ) +  " | Edited existing list." )
 
+# Read our config
+config = configparser.ConfigParser()
+config.readfp( open( "serverlist_config.ini" ) )
 
-BOT.run( open( "token.txt" ).read(),
-    [
-    ZMServerList( open( "channel.txt" ).read() )
-    # Add other tasks here
-    ] )
+try:
+    BOT.run( config.get( 'config', 'token' ),
+        [
+        ServerList( config )
+        # Add other tasks here
+        ] )
+except discord.LoginFailure:
+    print( "Failed to log in! Make sure your token is correct!" )
+
+BOT.end()
+    
