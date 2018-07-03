@@ -1,6 +1,7 @@
 import time
 import datetime
 import configparser
+from os import path
 
 import discord
 import asyncio
@@ -11,10 +12,10 @@ import valve.source.master_server
 
 
 
-QUERY_INTERVAL = 300 # Query servers every this many seconds
+QUERY_INTERVAL = 500 # Query servers every this many seconds
 # Allow queries every this many seconds (from user commands)
 # You shouldn't change this to be too low or the query will take too long and the bot will disconnect.
-MIN_QUERY_INTERVAL = 150
+MIN_QUERY_INTERVAL = 200
 
 DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
 
@@ -165,7 +166,10 @@ class ServerList(BaseTask):
                 if self.list_differs( new_list ):
                     print( "List differs! Updating..." )
                     await self.print_list( new_list )
-            await asyncio.sleep( self.get_sleeptime() )
+                await asyncio.sleep( self.get_sleeptime() )
+            else:
+                await asyncio.sleep( 3 )
+        print( "Update loop ending..." )
         
     async def query_newlist( self ):
         # Return the server list depending on option
@@ -348,18 +352,20 @@ class ServerList(BaseTask):
         await BOT.client.edit_message( self.cur_msg, embed = self.build_serverlist_embed( list ) )
         print( self.get_datetime( self.last_action_time ) +  " | Edited existing list." )
 
-# Read our config
-config = configparser.ConfigParser()
-config.readfp( open( "serverlist_config.ini" ) )
 
-try:
-    BOT.run( config.get( 'config', 'token' ),
-        [
-        ServerList( config )
-        # Add other tasks here
-        ] )
-except discord.LoginFailure:
-    print( "Failed to log in! Make sure your token is correct!" )
-
-BOT.end()
-    
+if __name__ == "__main__":
+    # Read our config
+    config = configparser.ConfigParser()
+    config.readfp( open( path.join( path.dirname( __file__ ), "serverlist_config.ini" ) ) )
+    # Run the bot
+    try:
+        BOT.run( config.get( 'config', 'token' ),
+            [
+            ServerList( config )
+            # Add other tasks here
+            ] )
+    except discord.LoginFailure:
+        print( "Failed to log in! Make sure your token is correct!" )
+    except Exception as e:
+        print( "Discord bot ended unexpectedly: " + str( e ) )
+    BOT.end()
