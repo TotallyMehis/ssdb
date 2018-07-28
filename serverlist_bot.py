@@ -11,12 +11,6 @@ import valve.source.a2s
 import valve.source.master_server
 
 
-
-QUERY_INTERVAL = 500 # Query servers every this many seconds
-# Allow queries every this many seconds (from user commands)
-# You shouldn't change this to be too low or the query will take too long and the bot will disconnect.
-MIN_QUERY_INTERVAL = 200
-
 DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
 
 
@@ -95,6 +89,10 @@ class ServerListConfig:
         self.gamedir = config.get( 'config', 'gamedir' )
         self.max_total_query_time = float( config.get( 'config', 'max_total_query_time' ) )
         self.max_total_query_time = self.max_total_query_time if self.max_total_query_time > 0.0 else 30.0
+        self.query_interval = float( config.get( 'config', 'query_interval' ) )
+        self.query_interval = self.query_interval if self.query_interval > 0.0 else 30.0
+        self.min_query_interval = float( config.get( 'config', 'min_query_interval' ) )
+        self.min_query_interval = self.min_query_interval if self.min_query_interval > 0.0 else 30.0
     
 class ServerList(BaseTask):
     """Task: Prints an embed list of servers. Responds to commands (!serverlist/!servers) whenever possible."""
@@ -159,7 +157,7 @@ class ServerList(BaseTask):
     async def update_loop( self ):
         # Query servers on an interval
         await BOT.client.wait_until_ready()
-        await asyncio.sleep( MIN_QUERY_INTERVAL ) # Wait a bit before starting
+        await asyncio.sleep( self.config.min_query_interval ) # Wait a bit before starting
         while not BOT.client.is_closed:
             if self.should_query():
                 new_list = await self.query_newlist()
@@ -199,7 +197,7 @@ class ServerList(BaseTask):
                     if (time.time() - query_start) > self.config.max_total_query_time:
                         break
             except valve.source.NoResponseError:
-                print( self.get_datetime( time.time() ) + " | Master server request timed out!" )
+                self.log_activity( time.time(), "Master server request timed out!" )
         return ret
         
     async def query_servers( self, list ):
@@ -227,7 +225,7 @@ class ServerList(BaseTask):
                 info['address'] = "%s:%i" % ( address[0], address[1] );
                 return info
         except:
-            print( self.get_datetime( time.time() ) + " | Couldn't contact server %s!" % self.address_to_str( address ) )
+            self.log_activity( time.time(), "Couldn't contact server %s!" % self.address_to_str( address ) )
             self.num_offline += 1
             return None
     
@@ -286,18 +284,22 @@ class ServerList(BaseTask):
         if not self.last_serverlist: # We haven't even queried yet
             return True
         time_delta = time.time() - self.last_query_time
-        return True if time_delta > MIN_QUERY_INTERVAL else False
+        return True if time_delta > self.config.min_query_interval else False
     
     def get_sleeptime( self ):
+        queryinterval = self.config.query_interval
         time_delta = time.time() - self.last_query_time
-        if time_delta > QUERY_INTERVAL:
+        if time_delta > queryinterval:
             return 0
         else:
-            return QUERY_INTERVAL - time_delta
+            return queryinterval - time_delta
     
     @staticmethod
     def get_datetime( timestamp ):
         return datetime.datetime.fromtimestamp( timestamp ).strftime( DATE_FORMAT )
+    
+    def log_activity( self, time, msg ):
+        print( self.get_datetime( time ) + " | " + msg )
     
     async def print_list( self, list ):
         if self.should_print_new_msg():
@@ -343,14 +345,22 @@ class ServerList(BaseTask):
     
     async def send_newlist( self, channel, list ):
         self.num_other_msgs = 0
-        self.last_print_time = self.last_action_time = time.time()
-        self.cur_msg = await BOT.client.send_message( channel, embed = self.build_serverlist_embed( list ) )
-        print( self.get_datetime( self.last_action_time ) + " | Printed new list." )
+        curtime = time.time()
+        try:
+            self.cur_msg = await BOT.client.send_message( channel, embed = self.build_serverlist_embed( list ) )
+            self.last_print_time = self.last_action_time = curtime
+            self.log_activity( self.last_action_time, "Printed new list." )
+        except:
+            self.log_activity( curtime, "Failed to print new list." )
         
     async def send_editlist( self, list ):
-        self.last_action_time = time.time()
-        await BOT.client.edit_message( self.cur_msg, embed = self.build_serverlist_embed( list ) )
-        print( self.get_datetime( self.last_action_time ) +  " | Edited existing list." )
+        curtime = time.time()
+        try:
+            await BOT.client.edit_message( self.cur_msg, embed = self.build_serverlist_embed( list ) )
+            self.last_action_time = curtime
+            self.log_activity( self.last_action_time, "Edited existing list." )
+        except:
+            self.log_activity( curtime, "Failed to edit existing list." )
 
 
 if __name__ == "__main__":
