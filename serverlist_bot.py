@@ -1,6 +1,7 @@
 import time
 import datetime
 import configparser
+import sys
 from os import path
 
 import discord
@@ -364,6 +365,8 @@ class ServerList(BaseTask):
 
 
 if __name__ == "__main__":
+    # Our running script will use the exit code to determine whether to stop the execution loop or not.
+    exitcode = 0
     # Read our config
     config = configparser.ConfigParser()
     config.readfp( open( path.join( path.dirname( __file__ ), "serverlist_config.ini" ) ) )
@@ -376,6 +379,9 @@ if __name__ == "__main__":
             ] )
     except discord.LoginFailure:
         print( "Failed to log in! Make sure your token is correct!" )
+        exitcode = 1
     except Exception as e:
         print( "Discord bot ended unexpectedly: " + str( e ) )
     BOT.end()
+    if exitcode > 0:
+        sys.exit( exitcode )
