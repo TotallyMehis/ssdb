@@ -92,8 +92,8 @@ class ServerListConfig:
         self.max_total_query_time = self.max_total_query_time if self.max_total_query_time > 0.0 else 30.0
         self.query_interval = float( config.get( 'config', 'query_interval' ) )
         self.query_interval = self.query_interval if self.query_interval > 0.0 else 30.0
-        self.min_query_interval = float( config.get( 'config', 'min_query_interval' ) )
-        self.min_query_interval = self.min_query_interval if self.min_query_interval > 0.0 else 30.0
+        self.server_query_interval = float( config.get( 'config', 'server_query_interval' ) )
+        self.server_query_interval = self.server_query_interval if self.server_query_interval > 0.0 else 30.0
     
 class ServerList(BaseTask):
     """Task: Prints an embed list of servers. Responds to commands (!serverlist/!servers) whenever possible."""
@@ -158,7 +158,7 @@ class ServerList(BaseTask):
     async def update_loop( self ):
         # Query servers on an interval
         await BOT.client.wait_until_ready()
-        await asyncio.sleep( self.config.min_query_interval ) # Wait a bit before starting
+        await asyncio.sleep( self.config.server_query_interval ) # Wait a bit before starting
         while not BOT.client.is_closed:
             if self.should_query():
                 new_list = await self.query_newlist()
@@ -177,6 +177,12 @@ class ServerList(BaseTask):
         if self.user_serverlist:
             # User wants a specific list from ips.
             serverlist = await self.query_servers( self.user_serverlist )
+        elif self.should_query_last_list():
+            # Query the servers we've already collected.
+            lastservers = []
+            for info in self.last_serverlist:
+                lastservers.append( info['address_real'] )
+            serverlist = await self.query_servers( lastservers )
         else:
             # Just query master server.
             serverlist = await self.query_masterserver( None if not self.config.gamedir else self.config.gamedir )
@@ -285,15 +291,14 @@ class ServerList(BaseTask):
         if not self.last_serverlist: # We haven't even queried yet
             return True
         time_delta = time.time() - self.last_query_time
-        return True if time_delta > self.config.min_query_interval else False
+        return True if time_delta > self.config.server_query_interval else False
     
     def get_sleeptime( self ):
-        queryinterval = self.config.query_interval
+        queryinterval = self.config.server_query_interval
         time_delta = time.time() - self.last_query_time
-        if time_delta > queryinterval:
-            return 0
-        else:
-            return queryinterval - time_delta
+        to_sleep = queryinterval - time_delta
+        min_sleep_time = 5.0
+        return to_sleep if to_sleep > min_sleep_time else min_sleep_time
     
     @staticmethod
     def get_datetime( timestamp ):
@@ -319,6 +324,12 @@ class ServerList(BaseTask):
         if self.num_other_msgs > 8: # Too many messages to see it
             return True
         return False
+
+    def should_query_last_list( self ):
+        if not self.last_serverlist:
+            return False
+        time_delta = time.time() - self.last_query_time
+        return True if time_delta < self.config.query_interval else False
 
     def build_serverlist_embed( self, list ):
         # Sort according to player count
