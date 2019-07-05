@@ -153,7 +153,7 @@ class ServerList(BaseTask):
         if self.cur_msg.id == message.id:
             self.cur_msg = None # Our message, clear cache
         if self.cur_msg and message.channel.id == self.channel_id:
-            self.num_other_msgs -= 1;
+            self.num_other_msgs -= 1
         
     async def update_loop( self ):
         # Query servers on an interval
@@ -229,7 +229,7 @@ class ServerList(BaseTask):
                 new_count = info['player_count'] - info['bot_count']
                 info['player_count'] = new_count if new_count >= 0 else info['player_count']
                 info['address_real'] = address
-                info['address'] = "%s:%i" % ( address[0], address[1] );
+                info['address'] = "%s:%i" % ( address[0], address[1] )
                 return info
         except:
             self.log_activity( time.time(), "Couldn't contact server %s!" % self.address_to_str( address ) )
