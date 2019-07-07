@@ -107,6 +107,7 @@ class ServerList(BaseTask):
         self.last_action_time = 0.0 # Last time we edited or printed a message
         self.last_print_time = 0.0
         self.last_query_time = 0.0
+        self.last_ms_query_time = 0.0
         self.num_offline = 0 # Number of servers we couldn't contact
         self.cur_msg = None # The message we should edit
         self.num_other_msgs = 0 # How many messages between our msg and now
@@ -205,6 +206,7 @@ class ServerList(BaseTask):
                         break
             except valve.source.NoResponseError:
                 self.log_activity( time.time(), "Master server request timed out!" )
+            self.last_ms_query_time = time.time()
         return ret
         
     async def query_servers( self, list ):
@@ -328,7 +330,7 @@ class ServerList(BaseTask):
     def should_query_last_list( self ):
         if not self.last_serverlist:
             return False
-        time_delta = time.time() - self.last_query_time
+        time_delta = time.time() - self.last_ms_query_time
         return True if time_delta < self.config.query_interval else False
 
     def build_serverlist_embed( self, list ):
