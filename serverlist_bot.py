@@ -99,7 +99,7 @@ class ServerList(BaseTask):
     """Task: Prints an embed list of servers. Responds to commands (!serverlist/!servers) whenever possible."""
     def __init__( self, config ):
         BaseTask.__init__( self )
-        self.channel_id = config.get( 'config', 'channel' ) # The Channel ID we will use
+        self.channel_id = int( config.get( 'config', 'channel' ) ) # The Channel ID we will use
         self.config = ServerListConfig( config )
         self.user_serverlist = self.parse_ips( config.get( 'config', 'serverlist' ) )
         self.user_blacklist = self.parse_ips( config.get( 'config', 'blacklist' ) )
@@ -125,7 +125,7 @@ class ServerList(BaseTask):
             print( "Using channel %s instead!" % channel.name )
         limit = 6
         # Find the last time we said something
-        async for msg in BOT.client.logs_from( channel, limit = limit ):
+        async for msg in channel.history( limit = limit ):
             if msg.author.id == BOT.client.user.id:
                 self.cur_msg = msg
                 await self.print_list( await self.get_serverlist() )
@@ -160,7 +160,7 @@ class ServerList(BaseTask):
         # Query servers on an interval
         await BOT.client.wait_until_ready()
         await asyncio.sleep( self.config.server_query_interval ) # Wait a bit before starting
-        while not BOT.client.is_closed:
+        while not BOT.client.is_closed():
             if self.should_query():
                 new_list = await self.query_newlist()
                 if self.list_differs( new_list ):
@@ -361,20 +361,20 @@ class ServerList(BaseTask):
         self.num_other_msgs = 0
         curtime = time.time()
         try:
-            self.cur_msg = await BOT.client.send_message( channel, embed = self.build_serverlist_embed( list ) )
+            self.cur_msg = await channel.send( embed = self.build_serverlist_embed( list ) )
             self.last_print_time = self.last_action_time = curtime
             self.log_activity( self.last_action_time, "Printed new list." )
         except:
-            self.log_activity( curtime, "Failed to print new list." )
+            self.log_activity( curtime, "Failed to print new list. Exception: " + str( e ) )
         
     async def send_editlist( self, list ):
         curtime = time.time()
         try:
-            await BOT.client.edit_message( self.cur_msg, embed = self.build_serverlist_embed( list ) )
+            await self.cur_msg.edit( embed = self.build_serverlist_embed( list ) )
             self.last_action_time = curtime
             self.log_activity( self.last_action_time, "Edited existing list." )
-        except:
-            self.log_activity( curtime, "Failed to edit existing list." )
+        except Exception as e:
+            self.log_activity( curtime, "Failed to edit existing list. Exception: " + str( e ) )
 
 
 if __name__ == "__main__":
