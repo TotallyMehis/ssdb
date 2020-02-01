@@ -97,14 +97,17 @@ class ServerListClient(discord.Client):
         # Find the last time we said something
         limit = 6
 
-        self.cur_msg = await channel.fetch_message(
-            self.persistent_msg_id)
+        try:
+            self.cur_msg = await channel.fetch_message(
+                self.persistent_msg_id)
+        except discord.errors.NotFound:
+            pass
 
-        if self.cur_msg is not None:
+        if not self.cur_msg:
             print("Found last message", self.cur_msg.id)
 
         async for msg in channel.history(limit=limit):
-            if msg.id == self.cur_msg.id:
+            if self.cur_msg and msg.id == self.cur_msg.id:
                 break
             self.num_other_msgs += 1
             # We didn't find anything, just print a new list
@@ -117,7 +120,7 @@ class ServerListClient(discord.Client):
         if message.channel.id != self.channel_id:
             return
         # This is our message, ignore it.
-        if message.id == self.cur_msg.id:
+        if self.cur_msg and message.id == self.cur_msg.id:
             return
 
         self.num_other_msgs += 1
@@ -130,9 +133,11 @@ class ServerListClient(discord.Client):
             await self.print_list(await self.get_serverlist())
 
     async def on_message_delete(self, message):
+        if not self.cur_msg:
+            return
         if self.cur_msg.id == message.id:
             self.cur_msg = None  # Our message, clear cache
-        if self.cur_msg and message.channel.id == self.channel_id:
+        if message.channel.id == self.channel_id:
             self.num_other_msgs -= 1
 
     #
