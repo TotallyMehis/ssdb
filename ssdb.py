@@ -81,6 +81,8 @@ class ServerListClient(discord.Client):
     # Discord.py events
     #
     async def on_ready(self):
+        print("Logged on as", self.user)
+
         # Make sure our channel id is valid
         channel = self.get_channel(self.channel_id)
         if not channel:
