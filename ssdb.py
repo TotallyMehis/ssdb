@@ -113,12 +113,15 @@ class ServerListClient(discord.Client):
                 break
 
     async def on_message(self, message):
-        # Listen for commands in our channel.
+        # Listen for commands in our channel only.
         if message.channel.id != self.channel_id:
             return
-        if message.author.id == self.user.id:
+        # This is our message, ignore it.
+        if message.id == self.cur_msg.id:
             return
+
         self.num_other_msgs += 1
+        
         if message.content[0] != '!':
             return
         if not self.should_query() and not self.should_print_new_msg():
