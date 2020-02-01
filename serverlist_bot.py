@@ -433,10 +433,14 @@ if __name__ == "__main__":
     # Our running script will use the exit code
     # to determine whether to stop the execution loop or not.
     exitcode = 0
+
     # Read our config
     config = configparser.ConfigParser()
-    fp = open(path.join(path.dirname(__file__), "serverlist_config.ini"))
-    config.readfp(fp)
+    config_name = path.join(
+        path.dirname(__file__), "serverlist_config.ini")
+    with open(config_name, 'r') as fp:
+        config.read_file(fp)
+
     # Run the bot
     try:
         BOT.run(
