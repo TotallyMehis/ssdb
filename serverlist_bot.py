@@ -27,6 +27,7 @@ class Bot:
     def __init__(self):
         print('Starting bot...')
         self.client = discord.Client()
+        self.tasks = []
 
     def run(self, token, tasks):
         self.tasks = tasks
