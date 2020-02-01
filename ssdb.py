@@ -73,7 +73,10 @@ class ServerListClient(discord.Client):
         self.last_ms_query_time = 0.0
         self.num_offline = 0  # Number of servers we couldn't contact
         self.cur_msg = None  # The message we should edit
+        self.persistent_msg_id = 0
         self.num_other_msgs = 0  # How many messages between our msg and now
+
+        self.read_persistent_last_msg()
 
         self.loop.create_task(self.update_loop())
 
@@ -90,12 +93,18 @@ class ServerListClient(discord.Client):
             channel = next(self.get_all_channels())
             self.channel_id = channel.id
             print("Using channel %s instead!" % channel.name)
-        limit = 6
+
         # Find the last time we said something
+        limit = 6
+
+        self.cur_msg = await channel.fetch_message(
+            self.persistent_msg_id)
+
+        if self.cur_msg is not None:
+            print("Found last message", self.cur_msg.id)
+
         async for msg in channel.history(limit=limit):
-            if msg.author.id == self.user.id:
-                self.cur_msg = msg
-                await self.print_list(await self.get_serverlist())
+            if msg.id == self.cur_msg.id:
                 break
             self.num_other_msgs += 1
             # We didn't find anything, just print a new list
@@ -390,6 +399,10 @@ class ServerListClient(discord.Client):
                 embed=self.build_serverlist_embed(l))
             self.last_print_time = self.last_action_time = curtime
             self.log_activity(self.last_action_time, "Printed new list.")
+
+            # Make sure we remember this message.
+            if self.cur_msg.id != self.persistent_msg_id:
+                self.write_persistent_last_msg()
         except:
             self.log_activity(
                 curtime,
@@ -406,6 +419,25 @@ class ServerListClient(discord.Client):
             self.log_activity(
                 curtime,
                 "Failed to edit existing list. Exception: " + str(e))
+
+    @staticmethod
+    def get_persistent_last_msg_name():
+        return path.join(
+            path.dirname(__file__), ".persistent_lastmsg.txt")
+
+    def read_persistent_last_msg(self):
+        file_name = self.get_persistent_last_msg_name()
+        try:
+            with open(file_name, "r") as fp:
+                self.persistent_msg_id = int(fp.read())
+        except IOError as e:
+            pass
+
+    def write_persistent_last_msg(self):
+        file_name = self.get_persistent_last_msg_name()
+        with open(file_name, "w") as fp:
+            fp.write(str(self.cur_msg.id) + "\n")
+        self.persistent_msg_id = self.cur_msg.id
 
 
 if __name__ == "__main__":
