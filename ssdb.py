@@ -22,8 +22,10 @@ def value_cap_min(value, min=0.0, def_value=30.0):
         return def_value
 
 
-def safe_cast(value, to_type=int, def_value=0):
+def safe_cast(value, to_type=int, def_value=0, base=0):
     try:
+        if base != 0:
+            return to_type(value, base)
         return to_type(value)
     except (ValueError, TypeError):
         return def_value
@@ -34,7 +36,9 @@ class ServerListConfig:
         self.embed_title = config.get('config', 'embed_title')
         self.embed_max = safe_cast(config.get('config', 'embed_max'))
         self.embed_max = 1 if self.embed_max < 1 else self.embed_max
-        self.embed_color = safe_cast(config.get('config', 'embed_color'), 16)
+        self.embed_color = safe_cast(
+            config.get('config', 'embed_color'),
+            base=16)
         self.gamedir = config.get('config', 'gamedir')
         self.max_total_query_time = float(
             config.get('config', 'max_total_query_time'))
