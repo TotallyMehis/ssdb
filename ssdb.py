@@ -29,76 +29,6 @@ def safe_cast(value, to_type=int, def_value=0):
         return def_value
 
 
-class Bot:
-    """Holds tasks and passes events to them"""
-    def __init__(self):
-        print('Starting bot...')
-        self.client = discord.Client()
-        self.tasks = []
-
-    def run(self, token, tasks):
-        self.tasks = tasks
-        for task in self.tasks:
-            task.create_task()
-        self.client.run(token)
-
-    def end(self):
-        for task in self.tasks:
-            task.free_task()
-
-    async def on_ready(self):
-        for task in self.tasks:
-            await task.on_ready()
-
-    async def on_message(self, message):
-        for task in self.tasks:
-            await task.on_message(message)
-
-    async def on_message_delete(self, message):
-        for task in self.tasks:
-            await task.on_message_delete(message)
-
-
-# Create the bot that will handle tasks
-BOT = Bot()
-
-
-@BOT.client.event
-async def on_ready():
-    print("Logged in as " + BOT.client.user.name)
-    await BOT.on_ready()
-
-
-@BOT.client.event
-async def on_message(message):
-    await BOT.on_message(message)
-
-
-@BOT.client.event
-async def on_message_delete(message):
-    await BOT.on_message_delete(message)
-
-
-class BaseTask:
-    def __init__(self):
-        pass
-
-    def create_task(self):
-        pass
-
-    def free_task(self):
-        pass
-
-    async def on_ready(self):
-        pass
-
-    async def on_message(self, message):
-        pass
-
-    async def on_message_delete(self, message):
-        pass
-
-
 class ServerListConfig:
     def __init__(self, config):
         self.embed_title = config.get('config', 'embed_title')
@@ -119,11 +49,11 @@ class ServerListConfig:
             self.server_query_interval)
 
 
-class ServerList(BaseTask):
+class ServerListClient(discord.Client):
     """Task: Prints an embed list of servers.
     Responds to commands (!serverlist/!servers) whenever possible."""
     def __init__(self, config):
-        BaseTask.__init__(self)
+        super().__init__()
         # The Channel ID we will use
         self.channel_id = safe_cast(config.get('config', 'channel'))
         self.config = ServerListConfig(config)
@@ -131,6 +61,7 @@ class ServerList(BaseTask):
             config.get('config', 'serverlist'))
         self.user_blacklist = self.parse_ips(
             config.get('config', 'blacklist'))
+
         self.last_serverlist = []
         self.last_action_time = 0.0  # Last time we edited or printed a message
         self.last_print_time = 0.0
@@ -140,21 +71,23 @@ class ServerList(BaseTask):
         self.cur_msg = None  # The message we should edit
         self.num_other_msgs = 0  # How many messages between our msg and now
 
-    def create_task(self):
-        BOT.client.loop.create_task(self.update_loop())
+        self.loop.create_task(self.update_loop())
 
+    #
+    # Discord.py events
+    #
     async def on_ready(self):
         # Make sure our channel id is valid
-        channel = BOT.client.get_channel(self.channel_id)
+        channel = self.get_channel(self.channel_id)
         if not channel:
             print("Invalid channel id %s!" % self.channel_id)
-            channel = next(BOT.client.get_all_channels())
+            channel = next(self.get_all_channels())
             self.channel_id = channel.id
             print("Using channel %s instead!" % channel.name)
         limit = 6
         # Find the last time we said something
         async for msg in channel.history(limit=limit):
-            if msg.author.id == BOT.client.user.id:
+            if msg.author.id == self.user.id:
                 self.cur_msg = msg
                 await self.print_list(await self.get_serverlist())
                 break
@@ -168,7 +101,7 @@ class ServerList(BaseTask):
         # Listen for commands in our channel.
         if message.channel.id != self.channel_id:
             return
-        if message.author.id == BOT.client.user.id:
+        if message.author.id == self.user.id:
             return
         self.num_other_msgs += 1
         if message.content[0] != '!':
@@ -184,12 +117,18 @@ class ServerList(BaseTask):
         if self.cur_msg and message.channel.id == self.channel_id:
             self.num_other_msgs -= 1
 
+    #
+    # Our stuff
+    #
+    """The update loop where we query servers."""
     async def update_loop(self):
         # Query servers on an interval
-        await BOT.client.wait_until_ready()
+        await self.wait_until_ready()
+
         # Wait a bit before starting
         await asyncio.sleep(self.config.server_query_interval)
-        while not BOT.client.is_closed():
+
+        while not self.is_closed():
             if self.should_query():
                 new_list = await self.query_newlist()
                 if self.list_differs(new_list):
@@ -198,10 +137,11 @@ class ServerList(BaseTask):
                 await asyncio.sleep(self.get_sleeptime())
             else:
                 await asyncio.sleep(3)
+
         print("Update loop ending...")
 
+    """Returns the server list depending on the configuration options."""
     async def query_newlist(self):
-        # Return the server list depending on option
         self.num_offline = 0
         serverlist = []
         if self.user_serverlist:
@@ -217,9 +157,13 @@ class ServerList(BaseTask):
             # Just query master server.
             serverlist = await self.query_masterserver(
                 None if not self.config.gamedir else self.config.gamedir)
+
         self.last_query_time = time.time()
+
         return serverlist
 
+    """Queries the Source master server list and return them.
+    Should keep these queries to the minimum, or you get timed out."""
     async def query_masterserver(self, gamedir):
         # TODO: More options?
         ret = []
@@ -227,6 +171,7 @@ class ServerList(BaseTask):
             try:
                 max_total_query_time = self.config.max_total_query_time
                 query_start = time.time()
+
                 for address in msq.find(gamedir=gamedir):
                     if self.is_blacklisted(address):
                         continue
@@ -242,10 +187,11 @@ class ServerList(BaseTask):
             self.last_ms_query_time = time.time()
         return ret
 
-    async def query_servers(self, list):
+    async def query_servers(self, whitelist):
         ret = []
         query_start = time.time()
-        for address in list:
+
+        for address in whitelist:
             info = await self.query_server_info(address)
             if info:
                 ret.append(info)
@@ -281,15 +227,19 @@ class ServerList(BaseTask):
 
     @staticmethod
     def parse_ips(ip_list):
-        list = []
+        l = []
+
         for address in ip_list.split(',', 2):
             ip = address.split(':')
             ip[0] = ip[0].strip()
+
             if not ip[0]:
                 continue
+
             print("Parsed ip %s!" % ip[0])
-            list.append([ip[0], 0 if len(ip) <= 1 else int(ip[1])])
-        return list
+            l.append([ip[0], 0 if len(ip) <= 1 else int(ip[1])])
+
+        return l
 
     def is_blacklisted(self, address):
         for blacklisted in self.user_blacklist:
@@ -314,12 +264,14 @@ class ServerList(BaseTask):
                 return True
         return False
 
-    def list_differs(self, newList):
+    def list_differs(self, new_list):
         if not self.last_serverlist:
             return True
-        if len(newList) != len(self.last_serverlist):
+
+        if len(new_list) != len(self.last_serverlist):
             return True
-        for (nServer, oServer) in zip(newList, self.last_serverlist):
+
+        for (nServer, oServer) in zip(new_list, self.last_serverlist):
             if nServer['player_count'] != oServer['player_count']:
                 return True
             if nServer['server_name'] != oServer['server_name']:
@@ -332,6 +284,7 @@ class ServerList(BaseTask):
         # We haven't even queried yet
         if not self.last_serverlist:
             return True
+
         time_delta = time.time() - self.last_query_time
         if time_delta > self.config.server_query_interval:
             return True
@@ -343,6 +296,7 @@ class ServerList(BaseTask):
         time_delta = time.time() - self.last_query_time
         to_sleep = queryinterval - time_delta
         min_sleep_time = 5.0
+
         return to_sleep if to_sleep > min_sleep_time else min_sleep_time
 
     @staticmethod
@@ -352,45 +306,52 @@ class ServerList(BaseTask):
     def log_activity(self, time, msg):
         print(self.get_datetime(time) + " | " + msg)
 
-    async def print_list(self, list):
+    async def print_list(self, l):
         if self.should_print_new_msg():
-            channel = BOT.client.get_channel(self.channel_id)
-            await self.send_newlist(channel, list)
+            channel = self.get_channel(self.channel_id)
+            await self.send_newlist(channel, l)
         else:
-            await self.send_editlist(list)
-        self.last_serverlist = list
+            await self.send_editlist(l)
+
+        self.last_serverlist = l
 
     def should_print_new_msg(self):
         if self.cur_msg is None:
             return True
+
         time_delta = time.time() - self.last_print_time
         # It has been a while, just make a new one
         if self.num_other_msgs > 3 and time_delta > 1800.0:
             return True
+
         # Too many messages to see it
         if self.num_other_msgs > 8:
             return True
+
         return False
 
     def should_query_last_list(self):
         if not self.last_serverlist:
             return False
+
         time_delta = time.time() - self.last_ms_query_time
         return True if time_delta < self.config.query_interval else False
 
-    def build_serverlist_embed(self, list):
+    def build_serverlist_embed(self, l):
         # Sort according to player count
         serverlist = sorted(
-            list,
+            l,
             key=lambda item: item['player_count'],
             reverse=True)
         # I just had a deja vu...
         # ABOUT THIS EXACT CODE AND ME EXPLAINING IT IN THIS COMMENT
         # FREE WILL IS A LIE
         # WE LIVE IN A SIMULATION
-        description = "%i server(s) online" % len(list)
+        description = "%i server(s) online" % len(l)
+
         if self.num_offline > 0:
             description += ", %i offline" % self.num_offline
+
         em = discord.Embed(
             title=self.config.embed_title,
             description=description,
@@ -407,17 +368,20 @@ class ServerList(BaseTask):
                 name=f"{ply_count}/{max_players} | {srv_name}",
                 value=f"Map: {srv_map} | Connect: steam://connect/{srv_adrss}",
                 inline=False)
+
             counter += 1
             if counter >= self.config.embed_max:
                 break
+
         return em
 
-    async def send_newlist(self, channel, list):
+    async def send_newlist(self, channel, l):
         self.num_other_msgs = 0
         curtime = time.time()
+
         try:
             self.cur_msg = await channel.send(
-                embed=self.build_serverlist_embed(list))
+                embed=self.build_serverlist_embed(l))
             self.last_print_time = self.last_action_time = curtime
             self.log_activity(self.last_action_time, "Printed new list.")
         except:
@@ -425,10 +389,11 @@ class ServerList(BaseTask):
                 curtime,
                 "Failed to print new list. Exception: " + str(e))
 
-    async def send_editlist(self, list):
+    async def send_editlist(self, l):
         curtime = time.time()
+
         try:
-            await self.cur_msg.edit(embed=self.build_serverlist_embed(list))
+            await self.cur_msg.edit(embed=self.build_serverlist_embed(l))
             self.last_action_time = curtime
             self.log_activity(self.last_action_time, "Edited existing list.")
         except Exception as e:
@@ -450,18 +415,14 @@ if __name__ == "__main__":
         config.read_file(fp)
 
     # Run the bot
+    client = ServerListClient(config)
     try:
-        BOT.run(
-            config.get('config', 'token'),
-            [
-                ServerList(config)
-                # Add other tasks here
-            ])
+        client.run(config.get('config', 'token'))
     except discord.LoginFailure:
         print("Failed to log in! Make sure your token is correct!")
         exitcode = 1
     except Exception as e:
         print("Discord bot ended unexpectedly: " + str(e))
-    BOT.end()
+
     if exitcode > 0:
         sys.exit(exitcode)
