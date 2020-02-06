@@ -125,7 +125,7 @@ class ServerListClient(discord.Client):
 
         self.num_other_msgs += 1
         
-        if message.content[0] != '!':
+        if not message.content or message.content[0] != '!':
             return
         if not self.should_query() and not self.should_print_new_msg():
             return
