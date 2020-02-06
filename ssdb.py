@@ -103,7 +103,7 @@ class ServerListClient(discord.Client):
         except discord.errors.NotFound:
             pass
 
-        if not self.cur_msg:
+        if self.cur_msg:
             print("Found last message", self.cur_msg.id)
 
         async for msg in channel.history(limit=limit):
