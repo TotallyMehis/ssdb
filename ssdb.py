@@ -252,15 +252,17 @@ class ServerListClient(discord.Client):
     def parse_ips(ip_list):
         l = []
 
-        for address in ip_list.split(',', 2):
+        for address in ip_list.split(','):
             ip = address.split(':')
             ip[0] = ip[0].strip()
 
             if not ip[0]:
                 continue
 
-            print("Parsed ip %s!" % ip[0])
-            l.append([ip[0], 0 if len(ip) <= 1 else int(ip[1])])
+            ip_port = 0 if len(ip) <= 1 else int(ip[1])
+            
+            print("Parsed ip %s (%s)!" % (ip[0], ip_port))
+            l.append([ip[0], ip_port])
 
         return l
 
