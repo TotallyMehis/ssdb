@@ -124,7 +124,7 @@ class ServerListClient(discord.Client):
             return
 
         self.num_other_msgs += 1
-        
+
         if not message.content or message.content[0] != '!':
             return
         if not self.should_query() and not self.should_print_new_msg():
@@ -240,7 +240,7 @@ class ServerListClient(discord.Client):
                 info['address_real'] = address
                 info['address'] = "%s:%i" % (address[0], address[1])
                 return info
-        except:
+        except Exception:
             self.log_activity(
                 time.time(),
                 "Couldn't contact server %s!" % self.address_to_str(address))
@@ -254,7 +254,7 @@ class ServerListClient(discord.Client):
 
     @staticmethod
     def parse_ips(ip_list):
-        l = []
+        lst = []
 
         for address in ip_list.split(','):
             ip = address.split(':')
@@ -264,11 +264,11 @@ class ServerListClient(discord.Client):
                 continue
 
             ip_port = 0 if len(ip) <= 1 else int(ip[1])
-            
-            print("Parsed ip %s (%s)!" % (ip[0], ip_port))
-            l.append([ip[0], ip_port])
 
-        return l
+            print("Parsed ip %s (%s)!" % (ip[0], ip_port))
+            lst.append([ip[0], ip_port])
+
+        return lst
 
     def is_blacklisted(self, address):
         for blacklisted in self.user_blacklist:
@@ -417,7 +417,7 @@ class ServerListClient(discord.Client):
             # Make sure we remember this message.
             if self.cur_msg.id != self.persistent_msg_id:
                 self.write_persistent_last_msg()
-        except:
+        except Exception:
             self.log_activity(
                 curtime,
                 "Failed to print new list. Exception: " + str(e))
@@ -444,7 +444,7 @@ class ServerListClient(discord.Client):
         try:
             with open(file_name, "r") as fp:
                 self.persistent_msg_id = int(fp.read())
-        except IOError as e:
+        except IOError:
             pass
 
     def write_persistent_last_msg(self):
