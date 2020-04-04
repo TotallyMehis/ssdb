@@ -207,6 +207,10 @@ class ServerListClient(discord.Client):
                 self.log_activity(
                     time.time(),
                     "Master server request timed out!")
+            except OSError as e:
+                self.log_activity(
+                    time.time(),
+                    "OSError when querying master server: " + str(e))
             self.last_ms_query_time = time.time()
         return ret
 
