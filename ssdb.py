@@ -251,12 +251,18 @@ class ServerListClient(discord.Client):
                 info['address_real'] = address
                 info['address'] = "%s:%i" % (address[0], address[1])
                 return info
-        except Exception:
+        except valve.source.NoResponseError:
             self.log_activity(
                 time.time(),
                 "Couldn't contact server %s!" % self.address_to_str(address))
             self.num_offline += 1
-            return None
+        except OSError as e:
+            self.log_activity(
+                time.time(),
+                "OSError when querying server: %s" % (e))
+            self.num_offline += 1
+
+        return None
 
     async def get_serverlist(self):
         if self.should_query():
@@ -426,10 +432,12 @@ class ServerListClient(discord.Client):
             # Make sure we remember this message.
             if self.cur_msg.id != self.persistent_msg_id:
                 self.write_persistent_last_msg()
-        except Exception:
+        except (discord.HTTPException,
+                discord.Forbidden,
+                discord.InvalidArgument) as e:
             self.log_activity(
                 curtime,
-                "Failed to print new list. Exception: " + str(e))
+                "Failed to print new list. Exception: %s" % (e))
 
     async def send_editlist(self, l):
         curtime = time.time()
@@ -438,10 +446,10 @@ class ServerListClient(discord.Client):
             await self.cur_msg.edit(embed=self.build_serverlist_embed(l))
             self.last_action_time = curtime
             self.log_activity(self.last_action_time, "Edited existing list.")
-        except Exception as e:
+        except (discord.HTTPException, discord.Forbidden) as e:
             self.log_activity(
                 curtime,
-                "Failed to edit existing list. Exception: " + str(e))
+                "Failed to edit existing list. Exception: %s" % (e))
 
     async def remove_oldlist(self):
         curtime = time.time()
