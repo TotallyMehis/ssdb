@@ -20,3 +20,5 @@ query_interval=100
 server_query_interval=20
 ; How long we will try querying servers (in seconds), if it takes longer than this, stop
 max_total_query_time=30
+; How many new messages do we allow before printing the server list again
+max_new_msgs=5

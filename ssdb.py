@@ -31,6 +31,14 @@ def safe_cast(value, to_type=int, def_value=0, base=0):
         return def_value
 
 
+def read_config_safe(config, name, def_value):
+    try:
+        return config.get('config', name)
+    except (configparser.Error):
+        pass
+    return def_value
+
+
 class ServerListConfig:
     def __init__(self, config):
         self.embed_title = config.get('config', 'embed_title')
@@ -51,6 +59,9 @@ class ServerListConfig:
             config.get('config', 'server_query_interval'))
         self.server_query_interval = value_cap_min(
             self.server_query_interval)
+
+        self.max_new_msgs = read_config_safe(config, 'max_new_msgs', '5')
+        self.max_new_msgs = safe_cast(self.max_new_msgs)
 
 
 class ServerListClient(discord.Client):
@@ -348,13 +359,8 @@ class ServerListClient(discord.Client):
         if self.cur_msg is None:
             return True
 
-        time_delta = time.time() - self.last_print_time
-        # It has been a while, just make a new one
-        if self.num_other_msgs > 3 and time_delta > 1800.0:
-            return True
-
         # Too many messages to see it
-        if self.num_other_msgs > 8:
+        if self.num_other_msgs > self.config.max_new_msgs:
             return True
 
         return False
