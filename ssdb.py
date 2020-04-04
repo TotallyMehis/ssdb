@@ -414,6 +414,9 @@ class ServerListClient(discord.Client):
         self.num_other_msgs = 0
         curtime = time.time()
 
+        # Remove old message.
+        await self.remove_oldlist()
+
         try:
             self.cur_msg = await channel.send(
                 embed=self.build_serverlist_embed(l))
@@ -439,6 +442,21 @@ class ServerListClient(discord.Client):
             self.log_activity(
                 curtime,
                 "Failed to edit existing list. Exception: " + str(e))
+
+    async def remove_oldlist(self):
+        curtime = time.time()
+
+        try:
+            if self.cur_msg:
+                await self.cur_msg.delete()
+                self.cur_msg = None
+                self.log_activity(curtime, "Removed old list.")
+        except (discord.HTTPException,
+                discord.NotFound,
+                discord.Forbidden) as e:
+            self.log_activity(
+                curtime,
+                "Failed to remove old list. Exception: %s" % (e))
 
     @staticmethod
     def get_persistent_last_msg_name():
