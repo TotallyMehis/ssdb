@@ -218,10 +218,10 @@ class ServerListClient(discord.Client):
                 self.log_activity(
                     time.time(),
                     "Master server request timed out!")
-            except OSError as e:
+            except (OSError, ConnectionError) as e:
                 self.log_activity(
                     time.time(),
-                    "OSError when querying master server: " + str(e))
+                    "Connection error querying master server: " + str(e))
             self.last_ms_query_time = time.time()
         return ret
 
@@ -256,10 +256,10 @@ class ServerListClient(discord.Client):
                 time.time(),
                 "Couldn't contact server %s!" % self.address_to_str(address))
             self.num_offline += 1
-        except OSError as e:
+        except (OSError, ConnectionError) as e:
             self.log_activity(
                 time.time(),
-                "OSError when querying server: %s" % (e))
+                "Connection error querying server: %s" % (e))
             self.num_offline += 1
 
         return None
