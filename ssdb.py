@@ -69,6 +69,149 @@ def address_equals(a1, a2):
     return False
 
 
+class ServerList():
+    def __init__(self):
+        self.servers = []
+        self.query_time = time.time()
+
+    def add_server(self, new_srv):
+        for srv in self.servers:
+            if srv.equals(new_srv):
+                return False
+
+        self.servers.append(new_srv)
+        return True
+
+    def update(self, new_srv_list):
+        insert = []
+        not_found = []
+        updated = 0
+
+        self.query_time = new_srv_list.query_time
+
+        # Find all not found servers.
+        for srv in self.servers:
+            found = False
+            for new_srv in new_srv_list.servers:
+                if srv.equals(new_srv):
+                    found = True
+                    break
+            if not found:
+                not_found.append(srv)
+
+        # Find all new servers and update existing ones.
+        for new_srv in new_srv_list.servers:
+            found = False
+            for srv in self.servers:
+                if srv.equals(new_srv):
+                    if srv.should_update(new_srv):
+                        updated = updated + 1
+
+                    srv.copy(new_srv)
+                    found = True
+                    break
+            if not found:
+                insert.append(new_srv)
+
+        # Insert new ones
+        self.servers.extend(insert)
+
+        # Update not found servers.
+        for srv in not_found:
+            srv.num_not_found = srv.num_not_found + 1
+
+        if updated > 0 or len(insert) > 0 or len(not_found) > 0:
+            log_activity("Updated %i servers! %i new & %i not found servers." %
+                         (updated, len(insert), len(not_found)))
+            return True
+
+        return False
+
+    """Returns all addresses we should query."""
+    def get_addresses(self):
+        addresses = []
+        for srv in self.servers:
+            addresses.append(srv.address)
+        return addresses
+
+    def equals(self, lst):
+        if not lst:
+            return False
+
+        if len(lst.servers) != len(self.servers):
+            return False
+
+        for (srv1, srv2) in zip(self.servers, lst.servers):
+            if not srv1.equals(srv2):
+                return False
+
+        return True
+
+
+class ServerData():
+    def __init__(self, address):
+        self.address = address
+
+        self.queried = False
+
+        self.ply_count = 0
+        self.max_ply_count = 0
+        self.server_name = ''
+        self.map_name = ''
+
+        self.num_not_found = 0
+        self.last_query_time = 0
+
+    def equals(self, srv):
+        if srv == self:
+            return True
+
+        if self.full_socket == srv.full_socket:
+            return True
+
+        return False
+
+    def should_update(self, srv):
+        if not self.queried:
+            return True
+
+        if self.ply_count != srv.ply_count:
+            return True
+        if self.max_ply_count != srv.max_ply_count:
+            return True
+        if self.server_name != srv.server_name:
+            return True
+        if self.map_name != srv.map_name:
+            return True
+
+        return False
+
+    def copy(self, srv):
+        self.ply_count = srv.ply_count
+        self.max_ply_count = srv.max_ply_count
+        self.server_name = srv.server_name
+        self.map_name = srv.map_name
+
+        self.last_query_time = srv.last_query_time
+
+    def update_info(self, info):
+        # Ignore bots if possible.
+        self.ply_count = info['player_count'] - info['bot_count']
+        self.max_ply_count = info['max_players']
+        self.server_name = info['server_name']
+        self.map_name = info['map']
+
+        self.num_retries = 0
+
+        self.last_query_time = time.time()
+
+        self.queried = True
+
+    @property
+    def full_socket(self):
+        return "%s:%i" % (self.address[0], self.address[1])
+
+
 class ServerListConfig:
     def __init__(self, config):
         self.embed_title = config.get('config', 'embed_title')
@@ -113,7 +256,7 @@ class ServerListClient(discord.Client):
         self.user_blacklist = self.parse_ips(
             config.get('config', 'blacklist'))
 
-        self.last_serverlist = []
+        self.serverlist = ServerList()
         self.last_action_time = 0.0  # Last time we edited or printed a message
         self.last_print_time = 0.0
         self.last_query_time = 0.0
@@ -159,7 +302,7 @@ class ServerListClient(discord.Client):
             self.num_other_msgs += 1
             # We didn't find anything, just print a new list
             if self.num_other_msgs >= limit:
-                await self.print_list(await self.get_serverlist())
+                await self.print_list()
                 break
 
     async def on_message(self, message):
@@ -177,7 +320,7 @@ class ServerListClient(discord.Client):
         if not self.should_query() and not self.should_print_new_msg():
             return
         if message.content[1:] in ('servers', 'serverlist', 'list'):
-            await self.print_list(await self.get_serverlist())
+            await self.print_list()
 
     async def on_message_delete(self, message):
         if not self.cur_msg:
@@ -200,10 +343,7 @@ class ServerListClient(discord.Client):
 
         while not self.is_closed():
             if self.should_query():
-                new_list = await self.query_newlist()
-                if self.list_differs(new_list):
-                    print("List differs! Updating...")
-                    await self.print_list(new_list)
+                await self.print_list()
                 await asyncio.sleep(self.get_sleeptime())
             else:
                 await asyncio.sleep(3)
@@ -213,30 +353,34 @@ class ServerListClient(discord.Client):
     """Returns the server list depending on the configuration options."""
     async def query_newlist(self):
         self.num_offline = 0
-        serverlist = []
+
+        new_lst = None
+
         if self.user_serverlist:
             # User wants a specific list from ips.
-            serverlist = await self.query_servers(self.user_serverlist)
+            new_lst = await self.query_servers(self.user_serverlist)
         elif self.should_query_last_list():
             # Query the servers we've already collected.
-            lastservers = []
-            for info in self.last_serverlist:
-                lastservers.append(info['address_real'])
-            serverlist = await self.query_servers(lastservers)
+            addresses = self.serverlist.get_addresses()
+            new_lst = await self.query_servers(addresses)
         else:
-            # Just query master server.
-            serverlist = await self.query_masterserver(
+            # Just query masterserver.
+            addresses = await self.query_masterserver(
                 None if not self.config.gamedir else self.config.gamedir)
+            new_lst = await self.query_servers(addresses)
 
         self.last_query_time = time.time()
 
-        return serverlist
+        return new_lst
 
-    """Queries the Source master server list and return them.
+    """Queries the Source master server list and returns all addresses found.
     Should keep these queries to the minimum, or you get timed out."""
     async def query_masterserver(self, gamedir):
+        log_activity("Querying masterserver...")
+
         # TODO: More options?
         ret = []
+
         with valve.source.master_server.MasterServerQuerier() as msq:
             try:
                 max_total_query_time = self.config.max_total_query_time
@@ -245,9 +389,9 @@ class ServerListClient(discord.Client):
                 for address in msq.find(gamedir=gamedir):
                     if self.is_blacklisted(address):
                         continue
-                    info = await self.query_server_info(address)
-                    if info:
-                        ret.append(info)
+
+                    ret.append(address)
+
                     if (time.time() - query_start) > max_total_query_time:
                         break
             except valve.source.NoResponseError:
@@ -257,33 +401,38 @@ class ServerListClient(discord.Client):
                 log_activity(
                     "Connection error querying master server: " + str(e))
             self.last_ms_query_time = time.time()
+
         return ret
 
-    async def query_servers(self, whitelist):
-        ret = []
+    async def query_servers(self, addresses):
+        log_activity("Querying %i servers..." % (len(addresses)))
+
+        srv_lst = ServerList()
         query_start = time.time()
 
-        for address in whitelist:
+        for address in addresses:
             info = await self.query_server_info(address)
             if info:
-                ret.append(info)
+                srv = ServerData(address)
+                srv.update_info(info)
+                srv_lst.add_server(srv)
+
             if (time.time() - query_start) > self.config.max_total_query_time:
                 break
-        return ret
+
+        srv_lst.query_time = time.time()
+
+        return srv_lst
 
     async def query_server_info(self, address):
+        # log_activity("Querying server %s..." % (address_to_str(address)))
+
         try:
             with valve.source.a2s.ServerQuerier(address) as server:
                 if not server:
                     return None
                 # Copy the server info
                 info = server.info()
-                # Ignore bots if possible.
-                new_count = info['player_count'] - info['bot_count']
-                info['player_count'] = (
-                    new_count if new_count >= 0 else info['player_count'])
-                info['address_real'] = address
-                info['address'] = "%s:%i" % (address[0], address[1])
                 return info
         except valve.source.NoResponseError:
             log_activity(
@@ -298,8 +447,9 @@ class ServerListClient(discord.Client):
 
     async def get_serverlist(self):
         if self.should_query():
-            return await self.query_newlist()
-        return self.last_serverlist
+            new_lst = await self.query_newlist()
+            self.serverlist.update(new_lst)
+        return self.serverlist
 
     @staticmethod
     def parse_ips(ip_list):
@@ -325,25 +475,9 @@ class ServerListClient(discord.Client):
                 return True
         return False
 
-    def list_differs(self, new_list):
-        if not self.last_serverlist:
-            return True
-
-        if len(new_list) != len(self.last_serverlist):
-            return True
-
-        for (nServer, oServer) in zip(new_list, self.last_serverlist):
-            if nServer['player_count'] != oServer['player_count']:
-                return True
-            if nServer['server_name'] != oServer['server_name']:
-                return True
-            if nServer['map'] != oServer['map']:
-                return True
-        return False
-
     def should_query(self):
         # We haven't even queried yet
-        if not self.last_serverlist:
+        if len(self.serverlist.servers) < 1:
             return True
 
         time_delta = time.time() - self.last_query_time
@@ -360,14 +494,18 @@ class ServerListClient(discord.Client):
 
         return to_sleep if to_sleep > min_sleep_time else min_sleep_time
 
-    async def print_list(self, l):
-        if self.should_print_new_msg():
-            channel = self.get_channel(self.channel_id)
-            await self.send_newlist(channel, l)
-        else:
-            await self.send_editlist(l)
+    async def print_list(self, lst=None):
+        if not lst:
+            lst = await self.get_serverlist()
 
-        self.last_serverlist = l
+            if not lst:
+                log_activity("Nothing to print!")
+                return
+
+        if self.should_print_new_msg():
+            await self.send_newlist(lst)
+        else:
+            await self.send_editlist(lst)
 
     def should_print_new_msg(self):
         if self.cur_msg is None:
@@ -380,38 +518,41 @@ class ServerListClient(discord.Client):
         return False
 
     def should_query_last_list(self):
-        if not self.last_serverlist:
+        if len(self.serverlist.servers) < 1:
             return False
 
         time_delta = time.time() - self.last_ms_query_time
         return True if time_delta < self.config.query_interval else False
 
-    def build_serverlist_embed(self, l):
+    def build_serverlist_embed(self, lst):
         # Sort according to player count
-        serverlist = sorted(
-            l,
-            key=lambda item: item['player_count'],
+        servers = sorted(
+            lst.servers,
+            key=lambda srv: srv.ply_count,
             reverse=True)
         # I just had a deja vu...
         # ABOUT THIS EXACT CODE AND ME EXPLAINING IT IN THIS COMMENT
         # FREE WILL IS A LIE
         # WE LIVE IN A SIMULATION
-        description = "%i server(s) online" % len(l)
+        description = "%i server(s) online" % (len(servers))
 
         if self.num_offline > 0:
             description += ", %i offline" % self.num_offline
+
+        description += ("\nUpdating every %i seconds" %
+                        (self.config.server_query_interval))
 
         em = discord.Embed(
             title=self.config.embed_title,
             description=description,
             colour=self.config.embed_color)
         counter = 0
-        for info in serverlist:
-            ply_count = info['player_count']
-            max_players = info['max_players']
-            srv_name = info['server_name']
-            srv_map = info['map']
-            srv_adrss = info['address']
+        for srv in servers:
+            ply_count = srv.ply_count
+            max_players = srv.max_ply_count
+            srv_name = srv.server_name
+            srv_map = srv.map_name
+            srv_adrss = srv.full_socket
 
             em.add_field(
                 name=f"{ply_count}/{max_players} | {srv_name}",
@@ -424,7 +565,9 @@ class ServerListClient(discord.Client):
 
         return em
 
-    async def send_newlist(self, channel, l):
+    async def send_newlist(self, lst):
+        channel = self.get_channel(self.channel_id)
+
         self.num_other_msgs = 0
         curtime = time.time()
 
@@ -432,8 +575,8 @@ class ServerListClient(discord.Client):
         await self.remove_oldlist()
 
         try:
-            self.cur_msg = await channel.send(
-                embed=self.build_serverlist_embed(l))
+            embed = self.build_serverlist_embed(lst)
+            self.cur_msg = await channel.send(embed=embed)
             self.last_print_time = self.last_action_time = curtime
             log_activity("Printed new list.")
 
@@ -446,11 +589,12 @@ class ServerListClient(discord.Client):
             log_activity(
                 "Failed to print new list. Exception: %s" % (e))
 
-    async def send_editlist(self, l):
+    async def send_editlist(self, lst):
         curtime = time.time()
 
         try:
-            await self.cur_msg.edit(embed=self.build_serverlist_embed(l))
+            embed = self.build_serverlist_embed(lst)
+            await self.cur_msg.edit(embed=embed)
             self.last_action_time = curtime
             log_activity("Edited existing list.")
         except (discord.HTTPException, discord.Forbidden) as e:
