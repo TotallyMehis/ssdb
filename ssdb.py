@@ -52,19 +52,25 @@ def log_activity(msg, tm=0):
 class ServerListConfig:
     def __init__(self, config):
         self.embed_title = config.get('config', 'embed_title')
+
         self.embed_max = safe_cast(config.get('config', 'embed_max'))
         self.embed_max = 1 if self.embed_max < 1 else self.embed_max
+
         self.embed_color = safe_cast(
             config.get('config', 'embed_color'),
             base=16)
+
         self.gamedir = config.get('config', 'gamedir')
+
         self.max_total_query_time = float(
             config.get('config', 'max_total_query_time'))
         self.max_total_query_time = value_cap_min(
             self.max_total_query_time)
+
         self.query_interval = float(config.get('config', 'query_interval'))
         self.query_interval = value_cap_min(
             self.query_interval)
+
         self.server_query_interval = float(
             config.get('config', 'server_query_interval'))
         self.server_query_interval = value_cap_min(
