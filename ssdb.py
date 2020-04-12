@@ -14,6 +14,8 @@ import valve.source.master_server
 
 DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
 
+VERBOSE = False
+
 
 def value_cap_min(value, min=0.0, def_value=30.0):
     if value > min:
@@ -47,6 +49,11 @@ def log_activity(msg, tm=0):
     if not tm:
         tm = time.time()
     print(get_datetime(tm) + " | " + msg)
+
+
+def log_verbose(msg, tm=0):
+    if VERBOSE:
+        log_activity(msg, tm)
 
 
 def address_to_str(address):
@@ -376,7 +383,7 @@ class ServerListClient(discord.Client):
     """Queries the Source master server list and returns all addresses found.
     Should keep these queries to the minimum, or you get timed out."""
     async def query_masterserver(self, gamedir):
-        log_activity("Querying masterserver...")
+        log_verbose("Querying masterserver...")
 
         # TODO: More options?
         ret = []
@@ -405,7 +412,7 @@ class ServerListClient(discord.Client):
         return ret
 
     async def query_servers(self, addresses):
-        log_activity("Querying %i servers..." % (len(addresses)))
+        log_verbose("Querying %i servers..." % (len(addresses)))
 
         srv_lst = ServerList()
         query_start = time.time()
@@ -425,7 +432,7 @@ class ServerListClient(discord.Client):
         return srv_lst
 
     async def query_server_info(self, address):
-        # log_activity("Querying server %s..." % (address_to_str(address)))
+        # log_verbose("Querying server %s..." % (address_to_str(address)))
 
         try:
             with valve.source.a2s.ServerQuerier(address) as server:
@@ -578,7 +585,7 @@ class ServerListClient(discord.Client):
             embed = self.build_serverlist_embed(lst)
             self.cur_msg = await channel.send(embed=embed)
             self.last_print_time = self.last_action_time = curtime
-            log_activity("Printed new list.")
+            log_verbose("Printed new list.")
 
             # Make sure we remember this message.
             if self.cur_msg.id != self.persistent_msg_id:
@@ -596,7 +603,7 @@ class ServerListClient(discord.Client):
             embed = self.build_serverlist_embed(lst)
             await self.cur_msg.edit(embed=embed)
             self.last_action_time = curtime
-            log_activity("Edited existing list.")
+            log_verbose("Edited existing list.")
         except (discord.HTTPException, discord.Forbidden) as e:
             log_activity(
                 "Failed to edit existing list. Exception: %s" % (e))
@@ -606,7 +613,7 @@ class ServerListClient(discord.Client):
             if self.cur_msg:
                 await self.cur_msg.delete()
                 self.cur_msg = None
-                log_activity("Removed old list.")
+                log_verbose("Removed old list.")
         except (discord.HTTPException,
                 discord.NotFound,
                 discord.Forbidden) as e:
