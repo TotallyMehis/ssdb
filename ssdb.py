@@ -233,6 +233,7 @@ class ServerListClient(discord.Client):
             except valve.source.NoResponseError:
                 log_activity(
                     "Master server request timed out!")
+            except (OSError, ConnectionError, ConnectionResetError) as e:
                 log_activity(
                     "Connection error querying master server: " + str(e))
             self.last_ms_query_time = time.time()
@@ -268,6 +269,7 @@ class ServerListClient(discord.Client):
             log_activity(
                 "Couldn't contact server %s!" % self.address_to_str(address))
             self.num_offline += 1
+        except (OSError, ConnectionError, ConnectionResetError) as e:
             log_activity(
                 "Connection error querying server: %s" % (e))
             self.num_offline += 1
