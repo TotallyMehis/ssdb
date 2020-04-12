@@ -453,8 +453,6 @@ class ServerListClient(discord.Client):
                 "Failed to edit existing list. Exception: %s" % (e))
 
     async def remove_oldlist(self):
-        curtime = time.time()
-
         try:
             if self.cur_msg:
                 await self.cur_msg.delete()
