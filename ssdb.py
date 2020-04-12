@@ -49,6 +49,26 @@ def log_activity(msg, tm=0):
     print(get_datetime(tm) + " | " + msg)
 
 
+def address_to_str(address):
+    if address[1] == 0:
+        # No port
+        return address[0]
+    else:
+        # Port exists
+        return ("%s:%i" % (address[0], address[1]))
+
+
+def address_equals(a1, a2):
+    # Same host
+    if a1[0] == a2[0]:
+        # If port is 0, ignore it
+        if a1[1] == 0 or a2[1] == 0:
+            return True
+        elif a1[1] == a2[1]:
+            return True
+    return False
+
+
 class ServerListConfig:
     def __init__(self, config):
         self.embed_title = config.get('config', 'embed_title')
@@ -267,7 +287,7 @@ class ServerListClient(discord.Client):
                 return info
         except valve.source.NoResponseError:
             log_activity(
-                "Couldn't contact server %s!" % self.address_to_str(address))
+                "Couldn't contact server %s!" % address_to_str(address))
             self.num_offline += 1
         except (OSError, ConnectionError, ConnectionResetError) as e:
             log_activity(
@@ -301,24 +321,7 @@ class ServerListClient(discord.Client):
 
     def is_blacklisted(self, address):
         for blacklisted in self.user_blacklist:
-            if self.address_equals(blacklisted, address):
-                return True
-        return False
-
-    @staticmethod
-    def address_to_str(address):
-        if address[1] == 0:
-            return address[0]
-        else:
-            return ("%s:%i" % (address[0], address[1]))
-
-    @staticmethod
-    def address_equals(a1, a2):
-        if a1[0] == a2[0]:
-            # If port is 0, ignore it
-            if a1[1] == 0 or a2[1] == 0:
-                return True
-            elif a1[1] == a2[1]:
+            if address_equals(blacklisted, address):
                 return True
         return False
 
