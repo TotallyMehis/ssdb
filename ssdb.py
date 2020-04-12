@@ -39,6 +39,16 @@ def read_config_safe(config, name, def_value):
     return def_value
 
 
+def get_datetime(timestamp):
+    return datetime.datetime.fromtimestamp(timestamp).strftime(DATE_FORMAT)
+
+
+def log_activity(msg, tm=0):
+    if not tm:
+        tm = time.time()
+    print(get_datetime(tm) + " | " + msg)
+
+
 class ServerListConfig:
     def __init__(self, config):
         self.embed_title = config.get('config', 'embed_title')
@@ -215,12 +225,9 @@ class ServerListClient(discord.Client):
                     if (time.time() - query_start) > max_total_query_time:
                         break
             except valve.source.NoResponseError:
-                self.log_activity(
-                    time.time(),
+                log_activity(
                     "Master server request timed out!")
-            except (OSError, ConnectionError) as e:
-                self.log_activity(
-                    time.time(),
+                log_activity(
                     "Connection error querying master server: " + str(e))
             self.last_ms_query_time = time.time()
         return ret
@@ -252,13 +259,10 @@ class ServerListClient(discord.Client):
                 info['address'] = "%s:%i" % (address[0], address[1])
                 return info
         except valve.source.NoResponseError:
-            self.log_activity(
-                time.time(),
+            log_activity(
                 "Couldn't contact server %s!" % self.address_to_str(address))
             self.num_offline += 1
-        except (OSError, ConnectionError) as e:
-            self.log_activity(
-                time.time(),
+            log_activity(
                 "Connection error querying server: %s" % (e))
             self.num_offline += 1
 
@@ -345,13 +349,6 @@ class ServerListClient(discord.Client):
 
         return to_sleep if to_sleep > min_sleep_time else min_sleep_time
 
-    @staticmethod
-    def get_datetime(timestamp):
-        return datetime.datetime.fromtimestamp(timestamp).strftime(DATE_FORMAT)
-
-    def log_activity(self, time, msg):
-        print(self.get_datetime(time) + " | " + msg)
-
     async def print_list(self, l):
         if self.should_print_new_msg():
             channel = self.get_channel(self.channel_id)
@@ -427,7 +424,7 @@ class ServerListClient(discord.Client):
             self.cur_msg = await channel.send(
                 embed=self.build_serverlist_embed(l))
             self.last_print_time = self.last_action_time = curtime
-            self.log_activity(self.last_action_time, "Printed new list.")
+            log_activity("Printed new list.")
 
             # Make sure we remember this message.
             if self.cur_msg.id != self.persistent_msg_id:
@@ -435,8 +432,7 @@ class ServerListClient(discord.Client):
         except (discord.HTTPException,
                 discord.Forbidden,
                 discord.InvalidArgument) as e:
-            self.log_activity(
-                curtime,
+            log_activity(
                 "Failed to print new list. Exception: %s" % (e))
 
     async def send_editlist(self, l):
@@ -445,10 +441,9 @@ class ServerListClient(discord.Client):
         try:
             await self.cur_msg.edit(embed=self.build_serverlist_embed(l))
             self.last_action_time = curtime
-            self.log_activity(self.last_action_time, "Edited existing list.")
+            log_activity("Edited existing list.")
         except (discord.HTTPException, discord.Forbidden) as e:
-            self.log_activity(
-                curtime,
+            log_activity(
                 "Failed to edit existing list. Exception: %s" % (e))
 
     async def remove_oldlist(self):
@@ -458,12 +453,11 @@ class ServerListClient(discord.Client):
             if self.cur_msg:
                 await self.cur_msg.delete()
                 self.cur_msg = None
-                self.log_activity(curtime, "Removed old list.")
+                log_activity("Removed old list.")
         except (discord.HTTPException,
                 discord.NotFound,
                 discord.Forbidden) as e:
-            self.log_activity(
-                curtime,
+            log_activity(
                 "Failed to remove old list. Exception: %s" % (e))
 
     @staticmethod
