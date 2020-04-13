@@ -343,11 +343,9 @@ class ServerListClient(discord.Client):
     #
     """The update loop where we query servers."""
     async def update_loop(self):
-        # Query servers on an interval
-        await self.wait_until_ready()
-
-        # Wait a bit before starting
-        await asyncio.sleep(self.config.server_query_interval)
+        # Wait until we're ready.
+        while not self.is_ready():
+            await asyncio.sleep(1)
 
         while not self.is_closed():
             if self.should_query():
