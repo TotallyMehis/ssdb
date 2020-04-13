@@ -3,13 +3,14 @@ import datetime
 import configparser
 import sys
 from os import path
+import socket
 
 import discord
 import asyncio
 
 import valve.source
-import valve.source.a2s
 import valve.source.master_server
+import a2s
 
 
 DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
@@ -203,10 +204,10 @@ class ServerData():
 
     def update_info(self, info):
         # Ignore bots if possible.
-        self.ply_count = info['player_count'] - info['bot_count']
-        self.max_ply_count = info['max_players']
-        self.server_name = info['server_name']
-        self.map_name = info['map']
+        self.ply_count = info.player_count - info.bot_count
+        self.max_ply_count = info.max_players
+        self.server_name = info.server_name
+        self.map_name = info.map_name
 
         self.num_retries = 0
 
@@ -418,7 +419,7 @@ class ServerListClient(discord.Client):
         query_start = time.time()
 
         for address in addresses:
-            info = await self.query_server_info(address)
+            info = self.query_server_info(address)
             if info:
                 srv = ServerData(address)
                 srv.update_info(info)
@@ -431,21 +432,19 @@ class ServerListClient(discord.Client):
 
         return srv_lst
 
-    async def query_server_info(self, address):
+    def query_server_info(self, address):
         # log_verbose("Querying server %s..." % (address_to_str(address)))
 
         try:
-            with valve.source.a2s.ServerQuerier(address) as server:
-                if not server:
-                    return None
-                # Copy the server info
-                info = server.info()
-                return info
-        except valve.source.NoResponseError:
+            info = a2s.info(address)
+            return info
+        except socket.timeout:
             log_activity(
                 "Couldn't contact server %s!" % address_to_str(address))
             self.num_offline += 1
-        except (OSError, ConnectionError, ConnectionResetError) as e:
+        except (a2s.BrokenMessageError,
+                a2s.BufferExhaustedError,
+                socket.gaierror) as e:
             log_activity(
                 "Connection error querying server: %s" % (e))
             self.num_offline += 1
