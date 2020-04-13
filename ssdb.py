@@ -469,7 +469,7 @@ class ServerListClient(discord.Client):
             ip_port = 0 if len(ip) <= 1 else int(ip[1])
 
             print("Parsed ip %s (%s)!" % (ip[0], ip_port))
-            lst.append([ip[0], ip_port])
+            lst.append((ip[0], ip_port))
 
         return lst
 
