@@ -364,16 +364,22 @@ class ServerListClient(discord.Client):
 
         if self.user_serverlist:
             # User wants a specific list from ips.
-            new_lst = await self.query_servers(self.user_serverlist)
+            new_lst = await self.loop.run_in_executor(
+                None,
+                self.query_servers, self.user_serverlist)
         elif self.should_query_last_list():
             # Query the servers we've already collected.
             addresses = self.serverlist.get_addresses()
-            new_lst = await self.query_servers(addresses)
+            new_lst = await self.loop.run_in_executor(
+                None,
+                self.query_servers, addresses)
         else:
             # Just query masterserver.
             addresses = await self.query_masterserver(
                 None if not self.config.gamedir else self.config.gamedir)
-            new_lst = await self.query_servers(addresses)
+            new_lst = await self.loop.run_in_executor(
+                None,
+                self.query_servers, addresses)
 
         self.last_query_time = time.time()
 
@@ -410,7 +416,7 @@ class ServerListClient(discord.Client):
 
         return ret
 
-    async def query_servers(self, addresses):
+    def query_servers(self, addresses):
         log_verbose("Querying %i servers..." % (len(addresses)))
 
         srv_lst = ServerList()
