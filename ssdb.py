@@ -448,7 +448,8 @@ class ServerListClient(discord.Client):
             self.num_offline += 1
         except (a2s.BrokenMessageError,
                 a2s.BufferExhaustedError,
-                socket.gaierror) as e:
+                socket.gaierror,
+                ConnectionError) as e:
             log_activity(
                 "Connection error querying server: %s" % (e))
             self.num_offline += 1
