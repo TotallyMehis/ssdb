@@ -276,7 +276,8 @@ class ServerListClient(discord.Client):
 
         self.read_persistent_last_msg()
 
-        self.loop.create_task(self.update_loop())
+        self.task_update_loop = None
+        self.check_update_loop()
 
     #
     # Discord.py events
@@ -312,6 +313,8 @@ class ServerListClient(discord.Client):
             if self.num_other_msgs >= limit:
                 await self.print_list()
                 break
+
+        self.check_update_loop()
 
     async def on_message(self, message):
         # Listen for commands in our channel only.
@@ -643,6 +646,24 @@ class ServerListClient(discord.Client):
         with open(file_name, "w") as fp:
             fp.write(str(self.cur_msg.id) + "\n")
         self.persistent_msg_id = self.cur_msg.id
+
+    def check_update_loop(self):
+        """Start or restart update loop if it has been stopped."""
+        restart = False
+
+        try:
+            if self.task_update_loop is not None:
+                self.task_update_loop.exception()
+        except asyncio.CancelledError:
+            restart = True  # We were cancelled
+        except asyncio.InvalidStateError:
+            pass  # We're still running
+        else:
+            restart = True  # We're done / never started
+
+        if restart:
+            log_activity("Starting update loop...")
+            self.task_update_loop = self.loop.create_task(self.update_loop())
 
 
 if __name__ == "__main__":
