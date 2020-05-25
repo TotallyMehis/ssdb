@@ -90,14 +90,14 @@ class ServerList():
         self.servers.append(new_srv)
         return True
 
-    def update(self, new_srv_list):
+    def update(self, new_srv_list, max_unresponsive_time):
         insert = []
         not_found = []
         updated = 0
 
         self.query_time = new_srv_list.query_time
 
-        # Find all not found servers.
+        # Find all unresponsive servers.
         for srv in self.servers:
             found = False
             for new_srv in new_srv_list.servers:
@@ -124,9 +124,18 @@ class ServerList():
         # Insert new ones
         self.servers.extend(insert)
 
-        # Update not found servers.
+        # Update unresponsive servers.
         for srv in not_found:
-            srv.num_not_found = srv.num_not_found + 1
+            srv.set_unresponsive()
+
+            # Remove them from list
+            if max_unresponsive_time >= 0:
+                unresp_time = time.time() - srv.unresponsive_time
+                if unresp_time > max_unresponsive_time:
+                    log_activity(
+                        "Removing unresponsive server '%s' from list." %
+                        (srv.server_name))
+                    self.servers.remove(srv)
 
         if updated > 0 or len(insert) > 0 or len(not_found) > 0:
             log_activity("Updated %i servers! %i new & %i not found servers." %
@@ -167,7 +176,9 @@ class ServerData():
         self.server_name = ''
         self.map_name = ''
 
-        self.num_not_found = 0
+        # When we lost connection to server for the first time
+        self.unresponsive_time = 0
+
         self.last_query_time = 0
 
     def equals(self, srv):
@@ -202,6 +213,8 @@ class ServerData():
 
         self.last_query_time = srv.last_query_time
 
+        self.set_responsive()
+
     def update_info(self, info):
         # Ignore bots if possible.
         self.ply_count = info.player_count - info.bot_count
@@ -209,11 +222,20 @@ class ServerData():
         self.server_name = info.server_name
         self.map_name = info.map_name
 
-        self.num_retries = 0
-
         self.last_query_time = time.time()
 
         self.queried = True
+
+    @property
+    def is_unresponsive(self):
+        return self.unresponsive_time != 0
+
+    def set_unresponsive(self):
+        if not self.is_unresponsive:
+            self.unresponsive_time = time.time()
+
+    def set_responsive(self):
+        self.unresponsive_time = 0
 
     @property
     def full_socket(self):
@@ -249,6 +271,12 @@ class ServerListConfig:
 
         self.max_new_msgs = read_config_safe(config, 'max_new_msgs', '5')
         self.max_new_msgs = safe_cast(self.max_new_msgs)
+
+        self.max_unresponsive_time = read_config_safe(
+            config,
+            'max_unresponsive_time', '30')
+        self.max_unresponsive_time = safe_cast(
+            self.max_unresponsive_time, float)
 
 
 class ServerListClient(discord.Client):
@@ -463,7 +491,8 @@ class ServerListClient(discord.Client):
     async def get_serverlist(self):
         if self.should_query():
             new_lst = await self.query_newlist()
-            self.serverlist.update(new_lst)
+            self.serverlist.update(
+                new_lst, self.config.max_unresponsive_time)
         return self.serverlist
 
     @staticmethod

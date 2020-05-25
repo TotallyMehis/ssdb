@@ -22,3 +22,5 @@ server_query_interval=20
 max_total_query_time=30
 ; How many new messages do we allow before printing the server list again
 max_new_msgs=5
+; How long we will keep an unresponsive server in the list. Values less than 0 will keep server indefinitely.
+max_unresponsive_time=30
