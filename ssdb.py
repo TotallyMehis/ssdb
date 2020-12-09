@@ -1,3 +1,4 @@
+# Standard libraries
 import time
 import datetime
 import configparser
@@ -5,13 +6,18 @@ import sys
 from os import path
 import socket
 import logging
-
-import discord
 import asyncio
 
+# Module: discord.py
+import discord
+
+# Module: python-valve
 import valve.source
 import valve.source.master_server
+
+# Module: python-a2s
 import a2s
+
 
 LOG_FORMAT = '%(asctime)s | %(message)s'
 
