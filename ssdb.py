@@ -19,44 +19,11 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 
-
-def value_cap_min(value, min=0.0, def_value=30.0):
-    if value > min:
+def value_cap_min(value, minval, def_value):
+    if value > minval:
         return value
     else:
         return def_value
-
-
-def safe_cast(value, to_type=int, def_value=0, base=0):
-    try:
-        if base != 0:
-            return to_type(value, base)
-        return to_type(value)
-    except (ValueError, TypeError):
-        return def_value
-
-
-def read_config_safe(config, name, def_value):
-    try:
-        return config.get('config', name)
-    except (configparser.Error):
-        pass
-    return def_value
-
-
-def get_datetime(timestamp):
-    return datetime.datetime.fromtimestamp(timestamp).strftime(DATE_FORMAT)
-
-
-def log_activity(msg, tm=0):
-    if not tm:
-        tm = time.time()
-    print(get_datetime(tm) + " | " + msg)
-
-
-def log_verbose(msg, tm=0):
-    if VERBOSE:
-        log_activity(msg, tm)
 
 
 def address_to_str(address):
@@ -248,37 +215,33 @@ class ServerListConfig:
     def __init__(self, config):
         self.embed_title = config.get('config', 'embed_title')
 
-        self.embed_max = safe_cast(config.get('config', 'embed_max'))
+        self.embed_max = config.getint('config', 'embed_max', fallback=1)
         self.embed_max = 1 if self.embed_max < 1 else self.embed_max
 
-        self.embed_color = safe_cast(
-            config.get('config', 'embed_color'),
-            base=16)
+        self.embed_color = int(config.get(
+            'config', 'embed_color', fallback='0x0'), base=16)
 
         self.gamedir = config.get('config', 'gamedir')
 
-        self.max_total_query_time = float(
-            config.get('config', 'max_total_query_time'))
+        self.max_total_query_time = config.getfloat(
+            'config', 'max_total_query_time', fallback=30)
         self.max_total_query_time = value_cap_min(
-            self.max_total_query_time)
+            self.max_total_query_time, 0, 30)
 
-        self.query_interval = float(config.get('config', 'query_interval'))
+        self.query_interval = config.getfloat(
+            'config', 'query_interval', fallback=100)
         self.query_interval = value_cap_min(
-            self.query_interval)
+            self.query_interval, 0, 100)
 
-        self.server_query_interval = float(
-            config.get('config', 'server_query_interval'))
+        self.server_query_interval = config.getfloat(
+            'config', 'server_query_interval', fallback=20)
         self.server_query_interval = value_cap_min(
-            self.server_query_interval)
+            self.server_query_interval, 0, 20)
 
-        self.max_new_msgs = read_config_safe(config, 'max_new_msgs', '5')
-        self.max_new_msgs = safe_cast(self.max_new_msgs)
+        self.max_new_msgs = config.getint('config', 'max_new_msgs', fallback=5)
 
-        self.max_unresponsive_time = read_config_safe(
-            config,
-            'max_unresponsive_time', '30')
-        self.max_unresponsive_time = safe_cast(
-            self.max_unresponsive_time, float)
+        self.max_unresponsive_time = config.getfloat(
+            'config', 'max_unresponsive_time', fallback=0)
 
 
 class ServerListClient(discord.Client):
@@ -287,12 +250,13 @@ class ServerListClient(discord.Client):
     def __init__(self, config):
         super().__init__()
         # The Channel ID we will use
-        self.channel_id = safe_cast(config.get('config', 'channel'))
+        self.channel_id = config.getint(
+            'config', 'channel', fallback=0)
         self.config = ServerListConfig(config)
         self.user_serverlist = self.parse_ips(
-            config.get('config', 'serverlist'))
+            config.get('config', 'serverlist', fallback=''))
         self.user_blacklist = self.parse_ips(
-            config.get('config', 'blacklist'))
+            config.get('config', 'blacklist', fallback=''))
 
         self.serverlist = ServerList()
         self.last_action_time = 0.0  # Last time we edited or printed a message
