@@ -4,6 +4,7 @@ import configparser
 import sys
 from os import path
 import socket
+import logging
 
 import discord
 import asyncio
@@ -12,10 +13,11 @@ import valve.source
 import valve.source.master_server
 import a2s
 
+LOG_FORMAT = '%(asctime)s | %(message)s'
 
-DATE_FORMAT = '%Y/%m/%d %H:%M:%S'
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
-VERBOSE = False
 
 
 def value_cap_min(value, min=0.0, def_value=30.0):
@@ -132,14 +134,14 @@ class ServerList():
             if max_unresponsive_time >= 0:
                 unresp_time = time.time() - srv.unresponsive_time
                 if unresp_time > max_unresponsive_time:
-                    log_activity(
+                    logger.info(
                         "Removing unresponsive server '%s' from list." %
                         (srv.server_name))
                     self.servers.remove(srv)
 
         if updated > 0 or len(insert) > 0 or len(not_found) > 0:
-            log_activity("Updated %i servers! %i new & %i not found servers." %
-                         (updated, len(insert), len(not_found)))
+            logger.info("Updated %i servers! %i new & %i not found servers." %
+                        (updated, len(insert), len(not_found)))
             return True
 
         return False
@@ -316,10 +318,10 @@ class ServerListClient(discord.Client):
         # Make sure our channel id is valid
         channel = self.get_channel(self.channel_id)
         if not channel:
-            print("Invalid channel id %s!" % self.channel_id)
+            logger.warning("Invalid channel id %s!" % self.channel_id)
             channel = next(self.get_all_channels())
             self.channel_id = channel.id
-            print("Using channel %s instead!" % channel.name)
+            logger.warning("Using channel %s instead!" % channel.name)
 
         # Find the last time we said something
         limit = 6
@@ -385,7 +387,7 @@ class ServerListClient(discord.Client):
             else:
                 await asyncio.sleep(3)
 
-        print("Update loop ending...")
+        logger.debug("Update loop ending...")
 
     """Returns the server list depending on the configuration options."""
     async def query_newlist(self):
@@ -419,7 +421,7 @@ class ServerListClient(discord.Client):
     """Queries the Source master server list and returns all addresses found.
     Should keep these queries to the minimum, or you get timed out."""
     async def query_masterserver(self, gamedir):
-        log_verbose("Querying masterserver...")
+        logger.info("Querying masterserver...")
 
         # TODO: More options?
         ret = []
@@ -438,17 +440,17 @@ class ServerListClient(discord.Client):
                     if (time.time() - query_start) > max_total_query_time:
                         break
             except valve.source.NoResponseError:
-                log_activity(
+                logger.error(
                     "Master server request timed out!")
             except (OSError, ConnectionError) as e:
-                log_activity(
+                logger.error(
                     "Connection error querying master server: " + str(e))
             self.last_ms_query_time = time.time()
 
         return ret
 
     def query_servers(self, addresses):
-        log_verbose("Querying %i servers..." % (len(addresses)))
+        logger.info("Querying %i servers..." % (len(addresses)))
 
         srv_lst = ServerList()
         query_start = time.time()
@@ -468,13 +470,13 @@ class ServerListClient(discord.Client):
         return srv_lst
 
     def query_server_info(self, address):
-        # log_verbose("Querying server %s..." % (address_to_str(address)))
+        # logger.info("Querying server %s..." % (address_to_str(address)))
 
         try:
             info = a2s.info(address)
             return info
         except socket.timeout:
-            log_activity(
+            logger.info(
                 "Couldn't contact server %s!" % address_to_str(address))
             self.num_offline += 1
         except (a2s.BrokenMessageError,
@@ -482,7 +484,7 @@ class ServerListClient(discord.Client):
                 socket.gaierror,
                 ConnectionError,
                 OSError) as e:
-            log_activity(
+            logger.error(
                 "Connection error querying server: %s" % (e))
             self.num_offline += 1
 
@@ -508,7 +510,7 @@ class ServerListClient(discord.Client):
 
             ip_port = 0 if len(ip) <= 1 else int(ip[1])
 
-            print("Parsed ip %s (%s)!" % (ip[0], ip_port))
+            logger.debug("Parsed ip %s (%s)!" % (ip[0], ip_port))
             lst.append((ip[0], ip_port))
 
         return lst
@@ -543,7 +545,7 @@ class ServerListClient(discord.Client):
             lst = await self.get_serverlist()
 
             if not lst:
-                log_activity("Nothing to print!")
+                logger.info("Nothing to print!")
                 return
 
         if self.should_print_new_msg():
@@ -622,7 +624,7 @@ class ServerListClient(discord.Client):
             embed = self.build_serverlist_embed(lst)
             self.cur_msg = await channel.send(embed=embed)
             self.last_print_time = self.last_action_time = curtime
-            log_verbose("Printed new list.")
+            logger.info("Printed new list.")
 
             # Make sure we remember this message.
             if self.cur_msg.id != self.persistent_msg_id:
@@ -630,7 +632,7 @@ class ServerListClient(discord.Client):
         except (discord.HTTPException,
                 discord.Forbidden,
                 discord.InvalidArgument) as e:
-            log_activity(
+            logger.error(
                 "Failed to print new list. Exception: %s" % (e))
 
     async def send_editlist(self, lst):
@@ -640,9 +642,9 @@ class ServerListClient(discord.Client):
             embed = self.build_serverlist_embed(lst)
             await self.cur_msg.edit(embed=embed)
             self.last_action_time = curtime
-            log_verbose("Edited existing list.")
+            logger.info("Edited existing list.")
         except (discord.HTTPException, discord.Forbidden) as e:
-            log_activity(
+            logger.error(
                 "Failed to edit existing list. Exception: %s" % (e))
 
     async def remove_oldlist(self):
@@ -650,11 +652,11 @@ class ServerListClient(discord.Client):
             if self.cur_msg:
                 await self.cur_msg.delete()
                 self.cur_msg = None
-                log_verbose("Removed old list.")
+                logger.info("Removed old list.")
         except (discord.HTTPException,
                 discord.NotFound,
                 discord.Forbidden) as e:
-            log_activity(
+            logger.error(
                 "Failed to remove old list. Exception: %s" % (e))
 
     @staticmethod
@@ -691,7 +693,7 @@ class ServerListClient(discord.Client):
             restart = True  # We're done / never started
 
         if restart:
-            log_activity("Starting update loop...")
+            logger.info("Starting update loop...")
             self.task_update_loop = self.loop.create_task(self.update_loop())
 
 
@@ -712,10 +714,10 @@ if __name__ == "__main__":
     try:
         client.run(config.get('config', 'token'))
     except discord.LoginFailure:
-        print("Failed to log in! Make sure your token is correct!")
+        logger.error("Failed to log in! Make sure your token is correct!")
         exitcode = 1
     except Exception as e:
-        print("Discord bot ended unexpectedly: " + str(e))
+        logger.error("Discord bot ended unexpectedly: " + str(e))
 
     if exitcode > 0:
         sys.exit(exitcode)
