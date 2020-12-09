@@ -24,3 +24,6 @@ max_total_query_time=30
 max_new_msgs=5
 ; How long we will keep an unresponsive server in the list. Values less than 0 will keep server indefinitely.
 max_unresponsive_time=30
+; Set the logging level. Follows standard logging library levels. Defaults to warning.
+; debug <- info <- warning <- error <- critical
+logging=warning

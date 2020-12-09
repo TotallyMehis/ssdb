@@ -709,6 +709,16 @@ if __name__ == "__main__":
     with open(config_name, 'r') as fp:
         config.read_file(fp)
 
+    # Init logger
+    log_level_str = config.get(
+        'config', 'logging', fallback='').upper()
+    log_level = getattr(logging, log_level_str, logging.WARNING)
+    ch = logging.StreamHandler()
+    ch.setLevel(log_level)
+    formatter = logging.Formatter(LOG_FORMAT)
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+
     # Run the bot
     client = ServerListClient(config)
     try:
