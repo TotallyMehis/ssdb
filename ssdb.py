@@ -311,6 +311,9 @@ class ServerListClient(discord.Client):
         self.check_update_loop()
 
     async def on_message(self, message):
+        # Not cached yet.
+        if not self.is_ready():
+            return
         # Listen for commands in our channel only.
         if message.channel.id != self.channel_id:
             return
@@ -328,6 +331,9 @@ class ServerListClient(discord.Client):
             await self.print_list()
 
     async def on_message_delete(self, message):
+        # Not cached yet.
+        if not self.is_ready():
+            return
         if not self.cur_msg:
             return
         if self.cur_msg.id == message.id:
