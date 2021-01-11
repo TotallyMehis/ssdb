@@ -681,7 +681,7 @@ if __name__ == "__main__":
     # Read our config
     config = configparser.ConfigParser()
     config_name = path.join(
-        path.dirname(__file__), ".ssdb_config.ini")
+        path.dirname(__file__), "config/.ssdb_config.ini")
     with open(config_name, 'r') as fp:
         config.read_file(fp)
 
