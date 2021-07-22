@@ -120,8 +120,8 @@ class ServerList():
 
         return False
 
-    """Returns all addresses we should query."""
     def get_addresses(self):
+        """Returns all addresses we should query."""
         addresses = []
         for srv in self.servers:
             addresses.append(srv.address)
@@ -254,6 +254,7 @@ class ServerListConfig:
 class ServerListClient(discord.Client):
     """Task: Prints an embed list of servers.
     Responds to commands (!serverlist/!servers) whenever possible."""
+
     def __init__(self, config):
         super().__init__()
         # The Channel ID we will use
@@ -345,9 +346,9 @@ class ServerListClient(discord.Client):
         if message.channel.id == self.channel_id:
             self.num_other_msgs -= 1
 
-    """The update loop where we query servers."""
     @tasks.loop(seconds=3)
     async def update_task(self):
+        """The update loop where we query servers."""
         if self.should_query():
             await self.print_list()
 
@@ -359,8 +360,8 @@ class ServerListClient(discord.Client):
     #
     # Our stuff
     #
-    """Returns the server list depending on the configuration options."""
     async def query_newlist(self):
+        """Returns the server list depending on the configuration options."""
         self.num_offline = 0
 
         new_lst = None
@@ -388,9 +389,11 @@ class ServerListClient(discord.Client):
 
         return new_lst
 
-    """Queries the Source master server list and returns all addresses found.
-    Should keep these queries to the minimum, or you get timed out."""
     async def query_masterserver(self, gamedir):
+        """Queries the Source master server list and returns all
+        addresses found.
+        Should keep these queries to the minimum,
+        or you get timed out."""
         logger.info("Querying masterserver...")
 
         # TODO: More options?
