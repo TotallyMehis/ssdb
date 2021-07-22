@@ -10,6 +10,7 @@ import asyncio
 
 # Module: discord.py
 import discord
+from discord.ext import tasks
 
 # Module: python-valve
 import valve.source
@@ -276,8 +277,7 @@ class ServerListClient(discord.Client):
 
         self.read_persistent_last_msg()
 
-        self.task_update_loop = None
-        self.check_update_loop()
+        self.update_task.start()
 
     #
     # Discord.py events
@@ -314,8 +314,6 @@ class ServerListClient(discord.Client):
                 await self.print_list()
                 break
 
-        self.check_update_loop()
-
     async def on_message(self, message):
         # Not cached yet.
         if not self.is_ready():
@@ -347,24 +345,20 @@ class ServerListClient(discord.Client):
         if message.channel.id == self.channel_id:
             self.num_other_msgs -= 1
 
+    """The update loop where we query servers."""
+    @tasks.loop(seconds=3)
+    async def update_task(self):
+        if self.should_query():
+            await self.print_list()
+
+    @update_task.before_loop
+    async def before_update_task(self):
+        # Wait until we're ready.
+        await self.wait_until_ready()
+
     #
     # Our stuff
     #
-    """The update loop where we query servers."""
-    async def update_loop(self):
-        # Wait until we're ready.
-        while not self.is_ready():
-            await asyncio.sleep(1)
-
-        while not self.is_closed():
-            if self.should_query():
-                await self.print_list()
-                await asyncio.sleep(self.get_sleeptime())
-            else:
-                await asyncio.sleep(3)
-
-        logger.debug("Update loop ending...")
-
     """Returns the server list depending on the configuration options."""
     async def query_newlist(self):
         self.num_offline = 0
@@ -508,14 +502,6 @@ class ServerListClient(discord.Client):
         else:
             return False
 
-    def get_sleeptime(self):
-        queryinterval = self.config.server_query_interval
-        time_delta = time.time() - self.last_query_time
-        to_sleep = queryinterval - time_delta
-        min_sleep_time = 5.0
-
-        return to_sleep if to_sleep > min_sleep_time else min_sleep_time
-
     async def print_list(self, lst=None):
         if not lst:
             lst = await self.get_serverlist()
@@ -653,24 +639,6 @@ class ServerListClient(discord.Client):
         with open(file_name, "w") as fp:
             fp.write(str(self.cur_msg.id) + "\n")
         self.persistent_msg_id = self.cur_msg.id
-
-    def check_update_loop(self):
-        """Start or restart update loop if it has been stopped."""
-        restart = False
-
-        try:
-            if self.task_update_loop is not None:
-                self.task_update_loop.exception()
-        except asyncio.CancelledError:
-            restart = True  # We were cancelled
-        except asyncio.InvalidStateError:
-            pass  # We're still running
-        else:
-            restart = True  # We're done / never started
-
-        if restart:
-            logger.info("Starting update loop...")
-            self.task_update_loop = self.loop.create_task(self.update_loop())
 
 
 if __name__ == "__main__":
