@@ -1,12 +1,10 @@
 # Standard libraries
 import time
-import datetime
 import configparser
 import sys
 from os import path
 import socket
 import logging
-import asyncio
 
 # Module: discord.py
 import discord
