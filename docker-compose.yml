@@ -1,0 +1,8 @@
+version: '3'
+
+services:
+  ssdb:
+    restart: always
+    build: ./
+    volumes:
+      - ./config:/app/config
