@@ -272,6 +272,7 @@ class ServerListClient(discord.Client):
         self.cur_msg = None  # The message we should edit
         self.persistent_msg_id = 0
         self.num_other_msgs = 0  # How many messages between our msg and now
+        self.init_done = False
 
         self.read_persistent_last_msg()
 
@@ -312,9 +313,14 @@ class ServerListClient(discord.Client):
                 await self.print_list()
                 break
 
+        self.init_done = True
+
     async def on_message(self, message):
         # Not cached yet.
         if not self.is_ready():
+            return
+        if not self.init_done:
+            logger.debug("Can't react to message, initializing not done yet.")
             return
         # Listen for commands in our channel only.
         if message.channel.id != self.channel_id:
@@ -336,6 +342,9 @@ class ServerListClient(discord.Client):
         # Not cached yet.
         if not self.is_ready():
             return
+        if not self.init_done:
+            logger.debug("Can't react to message deletion, initializing not done yet.")
+            return
         if not self.cur_msg:
             return
         if self.cur_msg.id == message.id:
@@ -346,6 +355,9 @@ class ServerListClient(discord.Client):
     @tasks.loop(seconds=3)
     async def update_task(self):
         """The update loop where we query servers."""
+        if not self.init_done:
+            logger.debug("Can't update list because initializing not done yet.")
+            return
         if self.should_query():
             await self.print_list()
 
