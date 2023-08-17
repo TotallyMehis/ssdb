@@ -5,7 +5,7 @@ token=
 channel=
 ; Use this if you just want a specific list of servers. IP:Port, separate with comma. (Example: 127.0.0.0:27015,127.0.0.1:27015)
 serverlist=
-; Game directory of the game. Can be left empty serverlist is used. (Example: cstrike)
+; If this is set, master server is queried for a specific game with the given game directory. Can be left empty if serverlist is used. (Example: cstrike)
 gamedir=
 ; Blacklist servers by IP. Separate by comma, port is optional. (Example: 127.0.0.0,127.0.0.1:27015)
 blacklist=
