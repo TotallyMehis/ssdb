@@ -11,8 +11,7 @@ import discord
 from discord.ext import tasks
 
 # Module: python-valve
-import valve.source
-import valve.source.master_server
+import steam.game_servers
 
 # Module: python-a2s
 import a2s
@@ -397,26 +396,22 @@ class ServerListClient(discord.Client):
         # TODO: More options?
         ret = []
 
-        with valve.source.master_server.MasterServerQuerier() as msq:
-            try:
-                max_total_query_time = self.config.max_total_query_time
-                query_start = time.time()
+        try:
+            max_total_query_time = self.config.max_total_query_time
+            query_start = time.time()
 
-                for address in msq.find(gamedir=gamedir):
-                    if self.is_blacklisted(address):
-                        continue
+            for address in steam.game_servers.query_master("\\gamedir\\" + gamedir):
+                if self.is_blacklisted(address):
+                    continue
 
-                    ret.append(address)
+                ret.append(address)
 
-                    if (time.time() - query_start) > max_total_query_time:
-                        break
-            except valve.source.NoResponseError:
-                logger.error(
-                    "Master server request timed out!")
-            except (OSError, ConnectionError) as e:
-                logger.error(
-                    "Connection error querying master server: " + str(e))
-            self.last_ms_query_time = time.time()
+                if (time.time() - query_start) > max_total_query_time:
+                    break
+        except (OSError, ConnectionError, RuntimeError) as e:
+            logger.error(
+                "Connection error querying master server: " + str(e))
+        self.last_ms_query_time = time.time()
 
         return ret
 
