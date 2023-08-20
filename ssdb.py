@@ -572,7 +572,7 @@ class ServerListClient(discord.Client):
 
             em.add_field(
                 name=f"{ply_count}/{max_players} | {srv_name}",
-                value=f"Map: {srv_map} | Connect: steam://connect/{srv_adrss}",
+                value=f"Map: {srv_map} | Connect: https://connectsteam.me/?{srv_adrss}",
                 inline=False)
 
             counter += 1
