@@ -1,0 +1,8 @@
+version: "3"
+services:
+  ssdb:
+    build: ./
+    volumes:
+      - type: bind
+        source: ./.ssdb_config.ini
+        target: /app/.ssdb_config.ini

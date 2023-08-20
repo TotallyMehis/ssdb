@@ -1,8 +1,31 @@
-# SSDB - Source engine Server List Discord Bot
+# SSDB - Source engine Server list Discord Bot
 Creates a list of Source engine game servers and updates it regularly. Useful for small mod communities.
 
-## Instructions
-- Make sure you have Python `3.11` installed.
-- Run `pip install -r requirements.txt`
-- Configure `.ssdb_config.ini` (remove .template from name) with at least the bot token, channel id and the list method.
-- Run `python ssdb.py`
+## Running with Docker
+
+```bash
+cp .ssdb_config.ini.template .ssdb_config.ini
+
+#
+# Configure .ssdb_config.ini file with at least the bot token, channel id and the list method.
+#
+
+# Builds image and runs SSDB.
+docker compose up
+```
+
+## Running manually
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+cp .ssdb_config.ini.template .ssdb_config.ini
+
+#
+# Configure .ssdb_config.ini file with at least the bot token, channel id and the list method.
+#
+
+# Run SSDB.
+python ssdb.py
+```
