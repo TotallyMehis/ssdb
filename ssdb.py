@@ -247,6 +247,8 @@ class ServerListConfig:
         self.max_unresponsive_time = config.getfloat(
             'config', 'max_unresponsive_time', fallback=0)
 
+        self.upper_format = config.get('config', 'upper_format')
+        self.lower_format = config.get('config', 'lower_format')
 
 class ServerListClient(discord.Client):
     """Task: Prints an embed list of servers.
@@ -564,15 +566,17 @@ class ServerListClient(discord.Client):
             colour=self.config.embed_color)
         counter = 0
         for srv in servers:
-            ply_count = srv.ply_count
-            max_players = srv.max_ply_count
-            srv_name = srv.server_name
-            srv_map = srv.map_name
-            srv_adrss = srv.full_socket
+            kwargs = {
+                "name": srv.server_name,
+                "address": srv.full_socket,
+                "map": srv.map_name,
+                "players": srv.ply_count,
+                "max_players": srv.max_ply_count
+            }
 
             em.add_field(
-                name=f"{ply_count}/{max_players} | {srv_name}",
-                value=f"Map: {srv_map} | Connect: steam://connect/{srv_adrss}",
+                name=self.config.upper_format.format(**kwargs),
+                value=self.config.lower_format.format(**kwargs),
                 inline=False)
 
             counter += 1
