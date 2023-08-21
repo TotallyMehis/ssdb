@@ -1,6 +1,9 @@
 # SSDB - Source engine Server list Discord Bot
 Creates a list of Source engine game servers and updates it regularly. Useful for small mod communities.
 
+![Example image](example.png)
+![Example image # 2](example2.png)
+
 ## Running with Docker
 
 ```bash
