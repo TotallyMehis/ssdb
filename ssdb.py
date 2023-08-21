@@ -10,7 +10,7 @@ import logging
 import discord
 from discord.ext import tasks
 
-# Module: python-valve
+# Module: steam
 import steam.game_servers
 
 # Module: python-a2s
