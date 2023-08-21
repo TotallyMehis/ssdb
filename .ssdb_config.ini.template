@@ -32,7 +32,7 @@ max_unresponsive_time=30
 ; map           - Current map
 ; address       - Ip address
 upper_format={players}/{max_players} | {name}
-lower_format=Map: {map} | Connect: `console {address}`
+lower_format=Map: {map} | Connect: `connect {address}`
 ; Set the logging level. Follows standard logging library levels. Defaults to warning.
 ; debug <- info <- warning <- error <- critical
 logging=warning
