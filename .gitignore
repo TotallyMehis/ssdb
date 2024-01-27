@@ -1,2 +1,3 @@
 .ssdb_config.ini
 .persistent_lastmsg.txt
+__pycache__/
