@@ -30,7 +30,7 @@ def value_cap_min(value, minval, def_value):
         return def_value
 
 
-def address_to_str(address):
+def address_to_str(address: tuple[str, int]):
     if address[1] == 0:
         # No port
         return address[0]
@@ -39,7 +39,7 @@ def address_to_str(address):
         return ("%s:%i" % (address[0], address[1]))
 
 
-def address_equals(a1, a2):
+def address_equals(a1: tuple[str, int], a2: tuple[str, int]):
     # Same host
     if a1[0] == a2[0]:
         # If port is 0, ignore it
@@ -52,10 +52,10 @@ def address_equals(a1, a2):
 
 class ServerList():
     def __init__(self):
-        self.servers = []
+        self.servers: list[ServerData] = []
         self.query_time = time.time()
 
-    def add_server(self, new_srv):
+    def add_server(self, new_srv: 'ServerData'):
         for srv in self.servers:
             if srv.equals(new_srv):
                 return False
@@ -63,9 +63,9 @@ class ServerList():
         self.servers.append(new_srv)
         return True
 
-    def update(self, new_srv_list, max_unresponsive_time):
-        insert = []
-        not_found = []
+    def update(self, new_srv_list: 'ServerList', max_unresponsive_time: float | int):
+        insert: list[ServerData] = []
+        not_found: list[ServerData] = []
         updated = 0
 
         self.query_time = new_srv_list.query_time
@@ -119,27 +119,29 @@ class ServerList():
 
     def get_addresses(self):
         """Returns all addresses we should query."""
-        addresses = []
+        addresses: list[tuple[str, int]] = []
         for srv in self.servers:
             addresses.append(srv.address)
         return addresses
 
-    def equals(self, lst):
-        if not lst:
-            return False
-
+    def equals(self, lst: 'ServerList'):
         if len(lst.servers) != len(self.servers):
             return False
 
-        for (srv1, srv2) in zip(self.servers, lst.servers):
-            if not srv1.equals(srv2):
+        for srv1 in self.servers:
+            found = False
+            for srv2 in lst.servers:
+                if srv1.equals(srv2):
+                    found = True
+                    break
+            if not found:
                 return False
 
         return True
 
 
 class ServerData():
-    def __init__(self, address):
+    def __init__(self, address: tuple[str, int]):
         self.address = address
 
         self.queried = False
@@ -154,7 +156,7 @@ class ServerData():
 
         self.last_query_time = 0
 
-    def equals(self, srv):
+    def equals(self, srv: 'ServerData'):
         if srv == self:
             return True
 
@@ -178,7 +180,7 @@ class ServerData():
 
         return False
 
-    def copy(self, srv):
+    def copy(self, srv: 'ServerData'):
         self.ply_count = srv.ply_count
         self.max_ply_count = srv.max_ply_count
         self.server_name = srv.server_name
@@ -216,7 +218,7 @@ class ServerData():
 
 
 class ServerListConfig:
-    def __init__(self, config):
+    def __init__(self, config: configparser.ConfigParser):
         self.embed_title = config.get('config', 'embed_title')
 
         self.embed_max = config.getint('config', 'embed_max', fallback=1)
@@ -254,8 +256,10 @@ class ServerListClient(discord.Client):
     """Task: Prints an embed list of servers.
     Responds to commands (!serverlist/!servers) whenever possible."""
 
-    def __init__(self, config):
-        super().__init__()
+    def __init__(self, config: configparser.ConfigParser):
+        intents = discord.Intents.default()
+        intents.message_content = True
+        super().__init__(intents=intents)
         # The Channel ID we will use
         self.channel_id = config.getint(
             'config', 'channel', fallback=0)
@@ -278,13 +282,14 @@ class ServerListClient(discord.Client):
 
         self.read_persistent_last_msg()
 
-        self.update_task.start()
-
     #
     # Discord.py events
     #
+    async def setup_hook(self):
+        self.update_task.start()
+
     async def on_ready(self):
-        print("Logged on as", self.user)
+        logger.info(f"Logged on as {self.user}")
 
         # Make sure our channel id is valid
         channel = self.get_channel(self.channel_id)
@@ -300,11 +305,13 @@ class ServerListClient(discord.Client):
         try:
             self.cur_msg = await channel.fetch_message(
                 self.persistent_msg_id)
-        except discord.errors.NotFound:
-            pass
+        except discord.NotFound:
+            logger.debug(f"Could not find persistent message by id {self.persistent_msg_id}.")
+        except Exception as e:
+            logger.error(f"Failed to fetch message persistent last message. Exception: {e}")
 
         if self.cur_msg:
-            print("Found last message", self.cur_msg.id)
+            logger.info(f"Found last message {self.cur_msg.id}")
 
         async for msg in channel.history(limit=limit):
             if self.cur_msg and msg.id == self.cur_msg.id:
@@ -317,7 +324,7 @@ class ServerListClient(discord.Client):
 
         self.init_done = True
 
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message):
         # Not cached yet.
         if not self.is_ready():
             return
@@ -332,6 +339,7 @@ class ServerListClient(discord.Client):
             return
 
         self.num_other_msgs += 1
+        logger.debug(f"New message. {self.num_other_msgs} messages after our list.")
 
         if not message.content or message.content[0] != '!':
             return
@@ -340,7 +348,7 @@ class ServerListClient(discord.Client):
         if message.content[1:] in ('servers', 'serverlist', 'list'):
             await self.print_list()
 
-    async def on_message_delete(self, message):
+    async def on_message_delete(self, message: discord.Message):
         # Not cached yet.
         if not self.is_ready():
             return
@@ -351,8 +359,12 @@ class ServerListClient(discord.Client):
             return
         if self.cur_msg.id == message.id:
             self.cur_msg = None  # Our message, clear cache
-        if message.channel.id == self.channel_id:
+            logger.debug(f"Our message was removed.")
+        if message.channel.id == self.channel_id and message.id > self.cur_msg.id:
             self.num_other_msgs -= 1
+            if self.num_other_msgs < 0:
+                self.num_other_msgs = 0
+            logger.debug(f"Removed message. {self.num_other_msgs} messages after our list.")
 
     @tasks.loop(seconds=3)
     async def update_task(self):
@@ -390,8 +402,7 @@ class ServerListClient(discord.Client):
                 self.query_servers, addresses)
         else:
             # Just query masterserver.
-            addresses = await self.query_masterserver(
-                None if not self.config.gamedir else self.config.gamedir)
+            addresses = await self.query_masterserver(self.config.gamedir)
             new_lst = await self.loop.run_in_executor(
                 None,
                 self.query_servers, addresses)
@@ -400,7 +411,7 @@ class ServerListClient(discord.Client):
 
         return new_lst
 
-    async def query_masterserver(self, gamedir):
+    async def query_masterserver(self, gamedir: str):
         """Queries the Source master server list and returns all
         addresses found.
         Should keep these queries to the minimum,
@@ -429,7 +440,7 @@ class ServerListClient(discord.Client):
 
         return ret
 
-    def query_servers(self, addresses):
+    def query_servers(self, addresses: list[tuple[str, int]]):
         logger.info("Querying %i servers..." % (len(addresses)))
 
         srv_lst = ServerList()
@@ -449,7 +460,7 @@ class ServerListClient(discord.Client):
 
         return srv_lst
 
-    def query_server_info(self, address):
+    def query_server_info(self, address: tuple[str, int]):
         # logger.info("Querying server %s..." % (address_to_str(address)))
 
         try:
@@ -478,8 +489,8 @@ class ServerListClient(discord.Client):
         return self.serverlist
 
     @staticmethod
-    def parse_ips(ip_list):
-        lst = []
+    def parse_ips(ip_list: str):
+        lst: list[tuple[str, int]] = []
 
         for address in ip_list.split(','):
             ip = address.split(':')
@@ -495,7 +506,7 @@ class ServerListClient(discord.Client):
 
         return lst
 
-    def is_blacklisted(self, address):
+    def is_blacklisted(self, address: tuple[str, int]):
         for blacklisted in self.user_blacklist:
             if address_equals(blacklisted, address):
                 return True
@@ -512,13 +523,12 @@ class ServerListClient(discord.Client):
         else:
             return False
 
-    async def print_list(self, lst=None):
-        if not lst:
-            lst = await self.get_serverlist()
+    async def print_list(self):
+        lst = await self.get_serverlist()
 
-            if not lst:
-                logger.info("Nothing to print!")
-                return
+        if not lst:
+            logger.info("Nothing to print!")
+            return
 
         if self.should_print_new_msg():
             await self.send_newlist(lst)
@@ -542,7 +552,7 @@ class ServerListClient(discord.Client):
         time_delta = time.time() - self.last_ms_query_time
         return True if time_delta < self.config.query_interval else False
 
-    def build_serverlist_embed(self, lst):
+    def build_serverlist_embed(self, lst: ServerList):
         # Sort according to player count
         servers = sorted(
             lst.servers,
@@ -585,7 +595,7 @@ class ServerListClient(discord.Client):
 
         return em
 
-    async def send_newlist(self, lst):
+    async def send_newlist(self, lst: ServerList):
         channel = self.get_channel(self.channel_id)
 
         self.num_other_msgs = 0
@@ -603,13 +613,13 @@ class ServerListClient(discord.Client):
             # Make sure we remember this message.
             if self.cur_msg.id != self.persistent_msg_id:
                 self.write_persistent_last_msg()
-        except (discord.HTTPException,
-                discord.Forbidden,
-                discord.InvalidArgument) as e:
+        except Exception as e:
             logger.error(
                 "Failed to print new list. Exception: %s" % (e))
 
-    async def send_editlist(self, lst):
+    async def send_editlist(self, lst: ServerList):
+        assert self.cur_msg
+
         curtime = time.time()
 
         try:
@@ -617,7 +627,7 @@ class ServerListClient(discord.Client):
             await self.cur_msg.edit(embed=embed)
             self.last_action_time = curtime
             logger.info("Edited existing list.")
-        except (discord.HTTPException, discord.Forbidden) as e:
+        except Exception as e:
             logger.error(
                 "Failed to edit existing list. Exception: %s" % (e))
 
@@ -627,9 +637,7 @@ class ServerListClient(discord.Client):
                 await self.cur_msg.delete()
                 self.cur_msg = None
                 logger.info("Removed old list.")
-        except (discord.HTTPException,
-                discord.NotFound,
-                discord.Forbidden) as e:
+        except Exception as e:
             logger.error(
                 "Failed to remove old list. Exception: %s" % (e))
 
@@ -647,6 +655,7 @@ class ServerListClient(discord.Client):
             pass
 
     def write_persistent_last_msg(self):
+        assert self.cur_msg
         file_name = self.get_persistent_last_msg_name()
         with open(file_name, "w") as fp:
             fp.write(str(self.cur_msg.id) + "\n")
@@ -654,10 +663,6 @@ class ServerListClient(discord.Client):
 
 
 if __name__ == "__main__":
-    # Our running script will use the exit code
-    # to determine whether to stop the execution loop or not.
-    exitcode = 0
-
     # Read our config
     config = configparser.ConfigParser()
     config_name = path.join(
@@ -675,6 +680,8 @@ if __name__ == "__main__":
     ch.setFormatter(formatter)
     logger.addHandler(ch)
 
+    exitcode = 0
+
     # Run the bot
     client = ServerListClient(config)
     try:
@@ -684,6 +691,7 @@ if __name__ == "__main__":
         exitcode = 1
     except Exception as e:
         logger.error("Discord bot ended unexpectedly: " + str(e))
+        exitcode = 2
 
     if exitcode > 0:
         sys.exit(exitcode)
