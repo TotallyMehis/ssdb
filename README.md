@@ -27,7 +27,7 @@ pip install -r requirements.txt
 cp .ssdb_config.ini.template .ssdb_config.ini
 
 #
-# Configure .ssdb_config.ini file with at least the bot token, channel id and the list method.
+# Configure .ssdb_config.ini file with at least the bot token, channel id, lower format setting and the list method.
 #
 
 # Run SSDB.
