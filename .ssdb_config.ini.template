@@ -32,10 +32,10 @@ max_unresponsive_time=30
 ; map           - Current map
 ; address       - Ip address
 upper_format={players}/{max_players} | {name}
-; Select a lower format by removing the comment character in front of your selection.
+; Change the lower format style by adding or removing comment markers for your desired format.
 ; SteamConnect.Site safely uses the Steam protocol to connect users to the server.
 ; Source code repo can be found at: https://github.com/dangreene0/steamconnect
-;lower_format=Map: {map} | Connect: `connect {address}`
+lower_format=Map: {map} | Connect: `connect {address}`
 ;lower_format=Map: {map} | Connect: http://steamconnect.site/?{address}
 ; Set the logging level. Follows standard logging library levels. Defaults to warning.
 ; debug <- info <- warning <- error <- critical
