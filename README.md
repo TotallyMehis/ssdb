@@ -3,7 +3,10 @@ Creates a list of Source engine game servers and updates it regularly. Useful fo
 
 The list can be configured to display specific set of servers or all mod's servers. The list format can be customized.
 
+### SSDB with default connect 
 ![Example image](example2.png)
+### SSDB with website connect
+![Example image](example3.png)
 
 ## Running with Docker
 
