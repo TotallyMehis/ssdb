@@ -1,4 +1,4 @@
-discord.py~=2.6.3
+discord.py~=2.7.1
 audioop-lts~=0.2.2; python_version>='3.13'
 python-a2s~=1.4.1
-requests~=2.32.5
+requests~=2.34.0
