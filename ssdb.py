@@ -219,9 +219,9 @@ class SSDBConfig:
     channel_id: int = 0
     """Discord channel id"""
     whitelist: list[Address] | None = None
-    appid: int = 440
+    appid: int | None = None
     gamedir: str | None = None
-    limit: int = 100
+    limit: int | None = None
     steam_webapi_key: str = ""
     blacklist: list[Address] | None = None
     embed_title: str = ""
@@ -253,8 +253,9 @@ class QuerySystem():
                  max_unresponsive_time: float | None = None,
                  ms_query_interval: float | None = None,
                  max_total_query_time: float | int | None = None):
-        assert whitelist or gamedir, "You must have serverlist (a whitelist) or gamedir configured!"
-        if gamedir:
+        assert whitelist or (appid and gamedir), \
+            "You must have serverlist (a whitelist) or appid+gamedir configured!"
+        if not whitelist:
             assert webapi_key, "You must have webapi_key configured!"
         self._num_offline = 0
         self._querier = querier
@@ -262,7 +263,7 @@ class QuerySystem():
         self._whitelist = whitelist
         self._appid = appid
         self._gamedir = gamedir
-        self._limit = limit
+        self._limit = limit or 100
         self._webapi_key = webapi_key
         self._blacklist = blacklist or []
         self._max_ms_query_time = max_ms_query_time or 30.0
@@ -551,13 +552,21 @@ def parse_config(prsr: configparser.ConfigParser):
     token = prsr.get("config", "token", fallback=None)
     channel_id = prsr.getint("config", "channel", fallback=None)
     whitelist = _parse_ips(prsr.get("config", "serverlist", fallback=None))
-    appid = prsr.get("config", "appid", fallback=None)
-    gamedir = prsr.get("config", "gamedir", fallback=None)
-    limit = prsr.get("config", "limit", fallback=None)
-    steam_webapi_key = prsr.get("config", "steam_webapi_key", fallback=None)
+    try:
+        appid = prsr.getint("masterserver", "appid", fallback=None)
+    except ValueError:
+        appid = None
+    gamedir = prsr.get("masterserver", "gamedir", fallback=None)
+    try:
+        limit = prsr.getint("masterserver", "limit", fallback=None)
+    except ValueError:
+        limit = None
+    steam_webapi_key = prsr.get(
+        "masterserver", "steam_webapi_key", fallback=None)
 
     assert token and channel_id, "You must configure Discord token and channel!"
-    assert whitelist or gamedir, "You must configure one list method, 'serverlist' or 'gamedir'!"
+    assert whitelist or (appid and gamedir), \
+        "You must configure one list method, 'serverlist' or ('appid'+'gamedir')!"
     if gamedir:
         assert steam_webapi_key, "You must configure 'steam_webapi_key' if you are using 'gamedir'!"
 
@@ -589,7 +598,8 @@ def parse_config(prsr: configparser.ConfigParser):
         "config", "max_unresponsive_time", fallback=0)
     upper_format = prsr.get("config", "upper_format")
     lower_format = prsr.get("config", "lower_format")
-    blacklist = _parse_ips(prsr.get("config", "blacklist", fallback=None))
+    blacklist = _parse_ips(
+        prsr.get("masterserver", "blacklist", fallback=None))
     log_level = prsr.get("config", "logging", fallback="").upper()
     return SSDBConfig(token=token, channel_id=channel_id, appid=appid, gamedir=gamedir, limit=limit,
                       steam_webapi_key=steam_webapi_key, whitelist=whitelist,

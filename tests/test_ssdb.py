@@ -173,9 +173,6 @@ def test_parse_config():
 token=token
 channel=1
 serverlist=127.0.0.1:27015,127.0.0.2:27016
-gamedir=gamedir
-steam_webapi_key=steam_webapi_key
-blacklist=127.0.0.3,127.0.0.4:27015
 embed_title=embed_title
 embed_color=0x101010
 embed_max=2
@@ -186,6 +183,12 @@ max_unresponsive_time=7
 upper_format=upper_format
 lower_format=lower_format
 logging=WARNING
+[masterserver]
+appid=440
+gamedir=gamedir
+limit=222
+steam_webapi_key=steam_webapi_key
+blacklist=127.0.0.3,127.0.0.4:27015
 """)
     config = parse_config(prsr)
     assert config.token == "token"
@@ -206,6 +209,47 @@ logging=WARNING
     assert config.upper_format == "upper_format"
     assert config.lower_format == "lower_format"
     assert config.log_level == "WARNING"
+    assert config.appid == 440
+    assert config.limit == 222
+
+
+def test_parse_config_serverlist():
+    """Parse minimal SSDB config w/ server list method"""
+    prsr = ConfigParser()
+    prsr.read_string("""
+[config]
+token=token
+channel=1
+serverlist=127.0.0.1:27015
+upper_format=upper_format
+lower_format=lower_format
+""")
+    config = parse_config(prsr)
+    assert config.token == "token"
+    assert config.channel_id == 1
+    assert ("127.0.0.1", 27015) in config.whitelist
+
+
+def test_parse_config_masterserver():
+    """Parse minimal SSDB config w/ master server method"""
+    prsr = ConfigParser()
+    prsr.read_string("""
+[config]
+token=token
+channel=1
+upper_format=upper_format
+lower_format=lower_format
+[masterserver]
+appid=440
+gamedir=gamedir
+steam_webapi_key=steam_webapi_key
+""")
+    config = parse_config(prsr)
+    assert config.token == "token"
+    assert config.channel_id == 1
+    assert config.appid == 440
+    assert config.gamedir == "gamedir"
+    assert config.steam_webapi_key == "steam_webapi_key"
 
 
 @mark.parametrize("jsn,expected", [
