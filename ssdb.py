@@ -193,7 +193,7 @@ class _QuerierInterface():
                       max_total_query_time: float) -> list[ServerData]:
         """Query a list of game servers."""
 
-    def query_masterserver(self, webapi_key: str, gamedir: str,
+    def query_masterserver(self, webapi_key: str, appid: int, gamedir: str, limit: int,
                            max_ms_query_time: float | int) -> list[Address]:
         """Queries the Source master server list and returns all addresses found. Should keep these
         queries to the minimum, or you get timed out."""
@@ -206,9 +206,9 @@ class QuerierImpl(_QuerierInterface):
                       max_total_query_time: float) -> list[ServerData]:
         return _query_servers(addresses, max_total_query_time)
 
-    def query_masterserver(self, webapi_key: str, gamedir: str,
+    def query_masterserver(self, webapi_key: str, appid: int, gamedir: str, limit: int,
                            max_ms_query_time: float | int) -> list[Address]:
-        return _query_masterserver(webapi_key, gamedir, max_ms_query_time)
+        return _query_masterserver(webapi_key, appid, gamedir, limit, max_ms_query_time)
 
 
 @dataclass
@@ -219,7 +219,9 @@ class SSDBConfig:
     channel_id: int = 0
     """Discord channel id"""
     whitelist: list[Address] | None = None
+    appid: int = 440
     gamedir: str | None = None
+    limit: int = 100
     steam_webapi_key: str = ""
     blacklist: list[Address] | None = None
     embed_title: str = ""
@@ -242,7 +244,9 @@ class QuerySystem():
                  querier: _QuerierInterface = QuerierImpl(),
                  max_ms_query_time: float | None = None,
                  whitelist: list[Address] | None = None,
+                 appid: int | None = None,
                  gamedir: str | None = None,
+                 limit: int | None = None,
                  webapi_key: str | None = None,
                  blacklist: list[Address] | None = None,
                  query_interval: float | None = None,
@@ -256,7 +260,9 @@ class QuerySystem():
         self._querier = querier
         self._server_list = ServerList()
         self._whitelist = whitelist
+        self._appid = appid
         self._gamedir = gamedir
+        self._limit = limit
         self._webapi_key = webapi_key
         self._blacklist = blacklist or []
         self._max_ms_query_time = max_ms_query_time or 30.0
@@ -310,7 +316,7 @@ class QuerySystem():
             addresses = await loop.run_in_executor(
                 None,
                 self._querier.query_masterserver,
-                self._webapi_key, self._gamedir, self._max_ms_query_time)
+                self._webapi_key, self._appid, self._gamedir, self._limit, self._max_ms_query_time)
             addresses = [
                 address for address in addresses if not self._is_blacklisted(address)]
             self._last_ms_query_time = time.time()
@@ -418,7 +424,9 @@ def _query_servers(addresses: list[Address], max_total_query_time: float):
 
 
 def _query_masterserver(webapi_key: str,
+                        appid: int,
                         gamedir: str,
+                        limit: int,
                         max_ms_query_time: float | int) -> list[Address]:
     logger.info("Querying masterserver...")
 
@@ -427,7 +435,9 @@ def _query_masterserver(webapi_key: str,
             "https://api.steampowered.com/IGameServersService/GetServerList/v1/",
             params={
                 "key": webapi_key,
-                "filter": "\\gamedir\\" + gamedir
+                "format": "json",
+                "filter": f"\\appid\\{appid}\\gamedir\\{gamedir}",
+                "limit": f"{limit}"
             },
             timeout=max_ms_query_time)
 
@@ -541,7 +551,9 @@ def parse_config(prsr: configparser.ConfigParser):
     token = prsr.get("config", "token", fallback=None)
     channel_id = prsr.getint("config", "channel", fallback=None)
     whitelist = _parse_ips(prsr.get("config", "serverlist", fallback=None))
+    appid = prsr.get("config", "appid", fallback=None)
     gamedir = prsr.get("config", "gamedir", fallback=None)
+    limit = prsr.get("config", "limit", fallback=None)
     steam_webapi_key = prsr.get("config", "steam_webapi_key", fallback=None)
 
     assert token and channel_id, "You must configure Discord token and channel!"
@@ -579,7 +591,7 @@ def parse_config(prsr: configparser.ConfigParser):
     lower_format = prsr.get("config", "lower_format")
     blacklist = _parse_ips(prsr.get("config", "blacklist", fallback=None))
     log_level = prsr.get("config", "logging", fallback="").upper()
-    return SSDBConfig(token=token, channel_id=channel_id, gamedir=gamedir,
+    return SSDBConfig(token=token, channel_id=channel_id, appid=appid, gamedir=gamedir, limit=limit,
                       steam_webapi_key=steam_webapi_key, whitelist=whitelist,
                       embed_title=embed_title, embed_max=embed_max, embed_color=embed_color,
                       max_total_query_time=max_total_query_time,

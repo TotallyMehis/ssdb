@@ -28,7 +28,9 @@ class SSDBClient(discord.Client):
         self._cur_msg: discord.Message | None = None  # The message we should edit
         self._num_other_msgs = 0  # How many messages between our msg and now
         self._persistent_msg_id = read_persisted_msg_id()
-        self._query_system = QuerySystem(gamedir=self._config.gamedir,
+        self._query_system = QuerySystem(appid=self._config.appid,
+                                         gamedir=self._config.gamedir,
+                                         limit=self._config.limit,
                                          webapi_key=self._config.steam_webapi_key,
                                          whitelist=self._config.whitelist,
                                          blacklist=self._config.blacklist,
